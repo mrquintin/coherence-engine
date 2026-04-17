@@ -1,0 +1,13 @@
+{
+  "schema_version": "anti-gaming-fixture-v1",
+  "notes": "Clean pitch: concrete metrics, distinct propositions, no template echo.",
+  "propositions": [
+    {"id": "p1", "text": "We serve 1,200 paying customers in manufacturing QA.", "prop_type": "premise"},
+    {"id": "p2", "text": "ARR grew from $180k to $740k over the past twelve months.", "prop_type": "premise"},
+    {"id": "p3", "text": "Our closed-loop vision pipeline reduces defect escape by 38 percent.", "prop_type": "premise"},
+    {"id": "p4", "text": "Integration with PLC logs cuts factory onboarding to under seven days.", "prop_type": "premise"},
+    {"id": "p5", "text": "Therefore, we can reach $3M ARR within the next four quarters.", "prop_type": "claim"}
+  ],
+  "prior_corpus": [],
+  "templates": []
+}

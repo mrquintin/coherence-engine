@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coherence-fund-config
+data:
+  COHERENCE_FUND_OUTBOX_BACKEND: "kafka"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: coherence-fund-secrets
+stringData:
+  KAFKA_BOOTSTRAP_SERVERS: "kafka-brokers.kafka.svc.cluster.local:9092"
+  REDIS_URL: ""
+  SQS_QUEUE_URL: ""
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coherence-fund-worker
+spec:
+  template:
+    spec:
+      containers:
+        - name: worker
+          command:
+            - /bin/sh
+            - -lc
+            - >
+              python -m coherence_engine dispatch-outbox
+              --backend "${COHERENCE_FUND_OUTBOX_BACKEND}"
+              --run-mode loop
+              --batch-size 500
+              --poll-seconds 1
+              --topic-prefix "${COHERENCE_FUND_TOPIC_PREFIX}"
+              --kafka-bootstrap-servers "${KAFKA_BOOTSTRAP_SERVERS}"
+              --sqs-queue-url "${SQS_QUEUE_URL}"
+              --sqs-region "${AWS_REGION}"
+              --redis-url "${REDIS_URL}"
+

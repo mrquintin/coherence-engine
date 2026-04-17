@@ -1,0 +1,271 @@
+# Reusable governance checks for baseline verification and attestation aging.
+#
+# Environment-scoped secrets: the CALLING job must set `environment: <name>` so that
+# `secrets: inherit` resolves UNCERTAINTY_GOVERNANCE_POLICY_BASELINES_JSON (and vars) from
+# that GitHub Environment. Configure environment protection (required reviewers) for
+# attestation/baseline workflows in Repository → Settings → Environments.
+#
+# check_kind:
+#   - baseline_verify — requires non-empty baselines secret; deterministic local verify.
+#   - attestation_aging — optional baselines secret; falls back to committed example JSON.
+#
+# No external network beyond checkout / Python setup.
+
+name: Reusable governance attestation check
+
+on:
+  workflow_call:
+    inputs:
+      check_kind:
+        description: "baseline_verify | attestation_aging"
+        type: string
+        required: true
+      governance_environment_slug:
+        description: "Echo-only slug matching the caller job environment (for summaries)."
+        type: string
+        required: false
+        default: ""
+      max_age_days:
+        description: "For attestation_aging only; max age days (string for workflow_call typing)."
+        type: string
+        required: false
+        default: "90"
+      reminder_days_before_max:
+        description: "For attestation_aging only; reminder window before max age."
+        type: string
+        required: false
+        default: "14"
+
+permissions:
+  contents: read
+
+jobs:
+  baseline-verify:
+    if: inputs.check_kind == 'baseline_verify'
+    name: Verify governance policy baselines
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Prepare artifact directory
+        run: mkdir -p artifacts/uncertainty-governance
+
+      - name: Trace environment (reviewer governance)
+        run: |
+          set -euo pipefail
+          slug="${{ inputs.governance_environment_slug }}"
+          if [ -n "${slug}" ]; then
+            echo "::notice::Governance environment (configure required reviewers here): ${slug}"
+          fi
+
+      - name: Write governance baselines from environment secret
+        env:
+          BASELINES_JSON: ${{ secrets.UNCERTAINTY_GOVERNANCE_POLICY_BASELINES_JSON }}
+          BASELINES_FILE: ${{ runner.temp }}/uncertainty-governance-policy-baselines.private.json
+        run: |
+          set -euo pipefail
+          if [ -z "${BASELINES_JSON}" ]; then
+            echo "::error::Missing governance baselines: add secret UNCERTAINTY_GOVERNANCE_POLICY_BASELINES_JSON to the job GitHub Environment (Repository → Settings → Environments). The value must be the full baselines JSON (same schema as deploy/ops/uncertainty-governance-policy-baselines.example.json). Repository or organization secrets/variables are not read by this reusable job — only inherited environment secrets."
+            exit 1
+          fi
+          printf '%s' "${BASELINES_JSON}" > "${BASELINES_FILE}"
+          python <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          path = Path(os.environ["BASELINES_FILE"])
+          raw = path.read_text(encoding="utf-8").strip()
+          if not raw:
+              print(
+                  "::error::Governance baselines secret resolved to empty content. "
+                  "Set UNCERTAINTY_GOVERNANCE_POLICY_BASELINES_JSON on the job environment to non-empty JSON.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          try:
+              json.loads(raw)
+          except json.JSONDecodeError as e:
+              print(f"::error::Governance baselines config is not valid JSON: {e}", file=sys.stderr)
+              sys.exit(1)
+          PY
+
+      - name: Run baseline verifier
+        id: verify
+        continue-on-error: true
+        env:
+          CI: "true"
+          BASELINES_FILE: ${{ runner.temp }}/uncertainty-governance-policy-baselines.private.json
+        run: |
+          set -euo pipefail
+          python deploy/scripts/verify_uncertainty_policy_baselines.py \
+            --reject-example-baseline-path \
+            --baselines "${BASELINES_FILE}" \
+            --json-out artifacts/uncertainty-governance/uncertainty-policy-baseline-verification.json
+
+      - name: Governance verification summary + drift alerts
+        if: always()
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          import json
+          import os
+          import pathlib
+          import sys
+
+          art = pathlib.Path("artifacts/uncertainty-governance/uncertainty-policy-baseline-verification.json")
+          summary = pathlib.Path(os.environ.get("GITHUB_STEP_SUMMARY", "/dev/null"))
+          if not art.is_file():
+              msg = "missing verification JSON artifact"
+              print(f"::error title=Uncertainty governance verification::{msg}")
+              if summary.is_file():
+                  summary.write_text(
+                      "## Uncertainty policy governance verification\n\n"
+                      f"**ALERT**: {msg}\n",
+                      encoding="utf-8",
+                  )
+              sys.exit(1)
+
+          data = json.loads(art.read_text(encoding="utf-8"))
+          lines = [
+              "## Uncertainty policy governance verification",
+              "",
+              f"- **ok**: `{data.get('ok')}`",
+              f"- **drift_detected**: `{data.get('drift_detected')}`",
+              f"- **alert**: `{data.get('alert')}`",
+              f"- **policy_path**: `{data.get('policy_path')}`",
+              f"- **actual_policy_sha256**: `{data.get('actual_policy_sha256')}`",
+              f"- **error_count**: `{data.get('error_count')}`",
+              "",
+              "### Per-environment",
+              "",
+              "| environment | outcome | drift | expected (trunc.) |",
+              "|-------------|---------|-------|---------------------|",
+          ]
+          for row in data.get("environments") or []:
+              exp = row.get("expected_policy_sha256") or ""
+              exp_short = (exp[:12] + "…") if len(exp) > 12 else exp
+              lines.append(
+                  "| {env} | `{out}` | `{drift}` | `{exp}` |".format(
+                      env=row.get("environment", ""),
+                      out=row.get("outcome", ""),
+                      drift=row.get("drift"),
+                      exp=exp_short,
+                  )
+              )
+          lines.extend(
+              [
+                  "",
+                  "Baselines source: GitHub Environment secret `UNCERTAINTY_GOVERNANCE_POLICY_BASELINES_JSON` "
+                  "(job-level environment; use required reviewers on that environment for reviewer governance).",
+                  "",
+                  "Full machine-readable result: artifact "
+                  "`uncertainty-governance-policy-verification/uncertainty-policy-baseline-verification.json`.",
+                  "",
+              ]
+          )
+          body = "\n".join(lines) + "\n"
+          if summary.is_file():
+              summary.write_text(body, encoding="utf-8")
+
+          for err in data.get("errors") or []:
+              safe = str(err).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+              print(f"::error title=Uncertainty policy baseline::{safe}")
+
+          if data.get("drift_detected"):
+              print(
+                  "::error title=Uncertainty policy drift::Pinned baseline SHA256 does not match "
+                  "the governed policy file; update baselines after approved change or revert policy."
+              )
+
+          for w in data.get("warnings") or []:
+              safe = str(w).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+              print(f"::warning title=Uncertainty policy baseline::{safe}")
+
+          if not data.get("ok"):
+              sys.exit(1)
+          PY
+
+      - name: Upload verification artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uncertainty-governance-policy-verification
+          path: artifacts/uncertainty-governance/uncertainty-policy-baseline-verification.json
+          if-no-files-found: warn
+
+  attestation-aging:
+    if: inputs.check_kind == 'attestation_aging'
+    name: Governance attestation aging report
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Trace environment (reviewer governance)
+        run: |
+          set -euo pipefail
+          slug="${{ inputs.governance_environment_slug }}"
+          if [ -n "${slug}" ]; then
+            echo "::notice::Governance environment (configure required reviewers here): ${slug}"
+          fi
+
+      - name: Prepare artifact directory
+        run: mkdir -p artifacts/governance-attestation
+
+      - name: Resolve baselines path (environment secret or example)
+        id: baselines
+        env:
+          BASELINES_JSON: ${{ secrets.UNCERTAINTY_GOVERNANCE_POLICY_BASELINES_JSON }}
+          BASELINES_FILE: ${{ runner.temp }}/uncertainty-governance-policy-baselines.private.json
+        run: |
+          set -euo pipefail
+          if [ -n "${BASELINES_JSON}" ]; then
+            printf '%s' "${BASELINES_JSON}" > "${BASELINES_FILE}"
+            python -c "import json, os, sys; from pathlib import Path; raw=Path(os.environ['BASELINES_FILE']).read_text(encoding='utf-8').strip(); (not raw and (print('::error::Baselines secret is empty', file=sys.stderr) or True) and sys.exit(1)); json.loads(raw)"
+            echo "path=${BASELINES_FILE}" >> "${GITHUB_OUTPUT}"
+            echo "source=environment_secret" >> "${GITHUB_OUTPUT}"
+          else
+            echo "::notice::No UNCERTAINTY_GOVERNANCE_POLICY_BASELINES_JSON on job environment; using committed example baselines for illustrative aging report."
+            echo "path=deploy/ops/uncertainty-governance-policy-baselines.example.json" >> "${GITHUB_OUTPUT}"
+            echo "source=example" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Generate attestation aging report
+        env:
+          BASELINES_PATH: ${{ steps.baselines.outputs.path }}
+          MAX_AGE_VAR: ${{ vars.UNCERTAINTY_OWNERSHIP_ATTESTATION_MAX_AGE_DAYS }}
+          REM_VAR: ${{ vars.UNCERTAINTY_OWNERSHIP_ATTESTATION_REMINDER_DAYS_BEFORE_MAX }}
+        run: |
+          set -euo pipefail
+          max_age="${MAX_AGE_VAR:-${{ inputs.max_age_days }}}"
+          rem="${REM_VAR:-${{ inputs.reminder_days_before_max }}}"
+          python deploy/scripts/report_governance_attestation_age.py report \
+            --baselines "${BASELINES_PATH}" \
+            --max-age-days "${max_age}" \
+            --reminder-days-before-max "${rem}" \
+            --json-out artifacts/governance-attestation/governance-attestation-aging-report.json \
+            --markdown-out artifacts/governance-attestation/governance_attestation_reminder_summary.md \
+            --write-step-summary
+
+      - name: Upload attestation lifecycle artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-attestation-aging-report
+          path: |
+            artifacts/governance-attestation/governance-attestation-aging-report.json
+            artifacts/governance-attestation/governance_attestation_reminder_summary.md
+          if-no-files-found: warn

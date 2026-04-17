@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "coherence-fund.fullname" . }}-worker
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  selector:
+    matchLabels:
+      app: {{ include "coherence-fund.fullname" . }}-worker
+  template:
+    metadata:
+      labels:
+        app: {{ include "coherence-fund.fullname" . }}-worker
+    spec:
+      containers:
+        - name: worker
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -lc
+            - >
+              python -m coherence_engine dispatch-outbox
+              --backend "${COHERENCE_FUND_OUTBOX_BACKEND}"
+              --run-mode loop
+              --batch-size {{ .Values.worker.batchSize }}
+              --poll-seconds {{ .Values.worker.pollSeconds }}
+              --topic-prefix "${COHERENCE_FUND_TOPIC_PREFIX}"
+              --kafka-bootstrap-servers "${KAFKA_BOOTSTRAP_SERVERS}"
+              --sqs-queue-url "${SQS_QUEUE_URL}"
+              --sqs-region "${AWS_REGION}"
+              --redis-url "${REDIS_URL}"
+          envFrom:
+            - configMapRef:
+                name: {{ include "coherence-fund.fullname" . }}-config
+            - secretRef:
+                name: {{ include "coherence-fund.fullname" . }}-secrets
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -lc
+                - >
+                  python -m coherence_engine.server.fund.worker_healthcheck
+                  --backend "${COHERENCE_FUND_OUTBOX_BACKEND}"
+                  --kafka-bootstrap-servers "${KAFKA_BOOTSTRAP_SERVERS}"
+                  --sqs-queue-url "${SQS_QUEUE_URL}"
+                  --sqs-region "${AWS_REGION}"
+                  --redis-url "${REDIS_URL}"
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -lc
+                - >
+                  python -m coherence_engine.server.fund.worker_healthcheck
+                  --backend "${COHERENCE_FUND_OUTBOX_BACKEND}"
+                  --kafka-bootstrap-servers "${KAFKA_BOOTSTRAP_SERVERS}"
+                  --sqs-queue-url "${SQS_QUEUE_URL}"
+                  --sqs-region "${AWS_REGION}"
+                  --redis-url "${REDIS_URL}"
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+

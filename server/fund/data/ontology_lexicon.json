@@ -1,0 +1,104 @@
+{
+  "schema_version": "ontology-lexicon-v1",
+  "actor_markers": [
+    "we",
+    "our team",
+    "our company",
+    "the founder",
+    "founder",
+    "founders",
+    "customer",
+    "customers",
+    "user",
+    "users",
+    "partner",
+    "partners",
+    "investor",
+    "investors",
+    "team",
+    "stakeholder",
+    "stakeholders",
+    "competitor",
+    "competitors",
+    "incumbent",
+    "incumbents"
+  ],
+  "causal_markers": [
+    "because",
+    "therefore",
+    "leads to",
+    "so that",
+    "due to",
+    "causes",
+    "caused",
+    "results in",
+    "drives",
+    "drive",
+    "enables",
+    "as a result"
+  ],
+  "metric_markers": [
+    "revenue",
+    "arr",
+    "mrr",
+    "cac",
+    "ltv",
+    "retention",
+    "churn",
+    "gross margin",
+    "growth rate",
+    "payback period",
+    "burn",
+    "runway",
+    "nps"
+  ],
+  "competition_markers": [
+    "competitor",
+    "competitors",
+    "incumbent",
+    "incumbents",
+    "versus",
+    "compared to",
+    "rival",
+    "rivals",
+    "against"
+  ],
+  "dependency_markers": [
+    "depends on",
+    "depend on",
+    "relies on",
+    "rely on",
+    "requires",
+    "require"
+  ],
+  "part_markers": [
+    "part of",
+    "component of",
+    "module of",
+    "belongs to"
+  ],
+  "measurement_markers": [
+    "tracks",
+    "track",
+    "measures",
+    "indicates"
+  ],
+  "object_markers": [
+    "product",
+    "platform",
+    "market",
+    "onboarding",
+    "solution",
+    "pricing",
+    "feature"
+  ],
+  "founder_forms": [
+    "we",
+    "our team",
+    "our company",
+    "the founder",
+    "founder",
+    "founders",
+    "team"
+  ]
+}

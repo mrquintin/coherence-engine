@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>{% block title %}Coherence Fund — Admin{% endblock %}</title>
+    <link rel="stylesheet" href="{{ static_url_prefix }}/admin.css" />
+    {# Vendored HTMX — served from the in-tree static mount. No CDN. #}
+    <script src="{{ static_url_prefix }}/htmx.min.js" defer></script>
+  </head>
+  <body>
+    <div class="admin-shell">
+      <header class="admin-header">
+        <h1>Coherence Fund — Admin (read-only)</h1>
+        <nav class="admin-nav">
+          <a href="{{ admin_base }}/applications">Applications</a>
+          <span class="muted">· read-only · mutations via CLI / API only</span>
+        </nav>
+      </header>
+      <main id="admin-main">{% block main %}{% endblock %}</main>
+      <footer class="admin-footer">
+        <span>Coherence Fund Orchestrator</span>
+        <span class="muted">
+          · Principal role: {{ principal_role or "unknown" }}
+          {%- if request_id %} · request {{ request_id }}{% endif -%}
+        </span>
+      </footer>
+    </div>
+  </body>
+</html>

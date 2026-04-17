@@ -1,0 +1,27 @@
+[Unit]
+Description=Coherence Fund Outbox Dispatcher Worker
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=coherence
+Group=coherence
+WorkingDirectory=/opt/coherence_engine
+EnvironmentFile=/etc/default/coherence-fund
+ExecStart=/bin/bash -lc '/opt/coherence_engine/venv/bin/python -m coherence_engine dispatch-outbox --backend ${COHERENCE_FUND_OUTBOX_BACKEND} --run-mode loop --batch-size 200 --poll-seconds 2 --topic-prefix ${COHERENCE_FUND_TOPIC_PREFIX} --kafka-bootstrap-servers "${KAFKA_BOOTSTRAP_SERVERS}" --sqs-queue-url "${SQS_QUEUE_URL}" --sqs-region "${AWS_REGION}" --redis-url "${REDIS_URL}"'
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillMode=mixed
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/coherence_engine
+
+[Install]
+WantedBy=multi-user.target
+

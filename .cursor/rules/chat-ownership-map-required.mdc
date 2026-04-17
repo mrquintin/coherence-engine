@@ -1,0 +1,24 @@
+---
+description: Require Ownership Map before parallel execution edits
+alwaysApply: true
+---
+
+# Ownership Map Required
+
+If the assistant uses parallel execution (2+ subagents), the first response must include a short **Ownership Map** before any edits start.
+
+Required format:
+
+- `Stream`: short name
+- `Objective`: what this stream will implement
+- `Owned files`: exact paths or path groups this stream may edit
+- `Forbidden files`: files owned by other streams
+- `Phase`: `parallel` or `serial`
+
+Rules:
+
+- Do not begin implementation edits until the Ownership Map is shown.
+- Ownership must be disjoint for streams marked `parallel`.
+- If overlap exists, mark those streams `serial` and name the integrator stream.
+- Shared/core files can be owned by only one stream (usually integrator).
+- If task is small and single-agent, no Ownership Map is required.

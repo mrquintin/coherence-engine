@@ -1,0 +1,50 @@
+{
+  "inc_001_contradictory_sustainability.json": {
+    "expected_verdict": "reject",
+    "rationale": "Multiple intra-sentence contradictions and zero quantified evidence; should fail coherence and/or anti-gaming gates."
+  },
+  "inc_002_word_salad.json": {
+    "expected_verdict": "reject",
+    "rationale": "Saturated repetition with no propositions or metrics; should fail repetitive-filler / coherence gates."
+  },
+  "inc_003_compliance_blocked.json": {
+    "expected_verdict": "reject",
+    "rationale": "compliance_status=blocked is a hard-fail gate (COMPLIANCE_BLOCKED); should always reject regardless of coherence."
+  },
+  "inc_004_empty_evidence.json": {
+    "expected_verdict": "reject",
+    "rationale": "Self-contradictory and evidence-free; should fail coherence below threshold and/or quality gate."
+  },
+  "coh_001_saas_metrics.json": {
+    "expected_verdict": "pass",
+    "rationale": "Concrete unit economics, named customer count, ACV, NRR, churn, and bounded TAM with named team; should clear coherence + quality + anti-gaming gates."
+  },
+  "coh_002_clinical_trial.json": {
+    "expected_verdict": "pass",
+    "rationale": "Pilot data with named baselines, IRB-registered study, named team and clear use of funds tied to a 240-patient RCT; should clear gates."
+  },
+  "coh_003_governance_pilot.json": {
+    "expected_verdict": "pass",
+    "rationale": "Three operating municipal pilots with measured cycle-time deltas, named pricing, renewals, and SOC 2 readiness; should clear gates."
+  },
+  "coh_004_marketplace_unit_econ.json": {
+    "expected_verdict": "pass",
+    "rationale": "GMV, take rate, contribution margin, CAC vs gross profit per forwarder, and concrete expansion plan; should clear gates."
+  },
+  "tpl_001_canonical_template.json": {
+    "expected_verdict": "manual_review",
+    "rationale": "Pure template language ('leading platform', 'trillion-dollar TAM', 'we move fast') with no quantified evidence; expected to land in the warning band or below threshold."
+  },
+  "tpl_002_buzzword_echo.json": {
+    "expected_verdict": "manual_review",
+    "rationale": "Heavily repetitive buzzword echo ('AI-native ...') intended to trip the repetitive-filler / template-overlap path while still passing compliance; expected to require human review."
+  },
+  "brd_001_compliance_review.json": {
+    "expected_verdict": "manual_review",
+    "rationale": "Real evidence and clear ask but compliance_status=review_required forces COMPLIANCE_REVIEW_REQUIRED -> manual_review."
+  },
+  "brd_002_thin_evidence.json": {
+    "expected_verdict": "manual_review",
+    "rationale": "Two pilots with mixed evidence and explicit acknowledgement of thin data; should land in manual_review band rather than a clean pass or hard reject."
+  }
+}

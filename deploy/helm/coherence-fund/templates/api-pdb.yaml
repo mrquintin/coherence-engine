@@ -1,0 +1,12 @@
+{{- if .Values.pdb.api.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "coherence-fund.fullname" . }}-api
+spec:
+  minAvailable: {{ .Values.pdb.api.minAvailable }}
+  selector:
+    matchLabels:
+      app: {{ include "coherence-fund.fullname" . }}-api
+{{- end }}
+

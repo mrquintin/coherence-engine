@@ -1,0 +1,10 @@
+{
+  "id": "coh_001_saas_metrics",
+  "category": "coherent_evidenced",
+  "one_liner": "Meridian Analytics replaces manual reconciliation for mid-market accounting teams.",
+  "use_of_funds_summary": "Hire two senior engineers and one design partner success lead; extend runway 14 months.",
+  "requested_check_usd": 250000,
+  "domain_primary": "market_economics",
+  "compliance_status": "clear",
+  "transcript_text": "Meridian Analytics is a vertical SaaS product for mid-market accounting teams that automates monthly bank reconciliation. We launched the paid product 11 months ago. We currently have 38 paying customers on annual contracts at an average ACV of 14,400 dollars, representing 547,200 dollars of annual recurring revenue. Net revenue retention over the last six months is 118 percent because three early customers expanded seats. Gross margin is 78 percent based on Q3 hosting and support costs. Our customer acquisition cost over the last quarter was 3,800 dollars and the LTV-to-CAC ratio is 4.1 based on a 22-month average customer lifetime. Churn over the last 90 days is 2.1 percent monthly. We surveyed 142 accounting controllers and 64 percent reported spending more than 10 hours per month on reconciliation. The market is bounded: there are roughly 32,000 mid-market firms in our target ICP, giving a serviceable obtainable market of approximately 460 million dollars at our current price point. Our team has prior experience shipping reconciliation tooling at two larger SaaS vendors. The 250,000 dollar check funds two senior engineers and one design partner success lead for 14 months, with a clear milestone of doubling paying customers and shipping the multi-currency module by month 9."
+}

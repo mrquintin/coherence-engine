@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "max_snooze_duration_hours": 168,
+  "allowed_reason_codes": ["MAINTENANCE", "INCIDENT", "DRILL", "OTHER"],
+  "snooze_required_fields": ["reason", "reason_code"],
+  "gates": {
+    "release": {
+      "max_snooze_duration_hours": 72,
+      "allowed_reason_codes": ["MAINTENANCE", "INCIDENT"]
+    },
+    "nonprod": {
+      "max_snooze_duration_hours": 336,
+      "allowed_reason_codes": ["MAINTENANCE", "INCIDENT", "DRILL", "OTHER"]
+    }
+  }
+}

@@ -1,0 +1,12 @@
+env:
+  COHERENCE_FUND_OUTBOX_BACKEND: "redis"
+
+secretEnv:
+  REDIS_URL: "redis://redis-master.redis.svc.cluster.local:6379/0"
+  KAFKA_BOOTSTRAP_SERVERS: ""
+  SQS_QUEUE_URL: ""
+
+worker:
+  batchSize: 300
+  pollSeconds: 1
+

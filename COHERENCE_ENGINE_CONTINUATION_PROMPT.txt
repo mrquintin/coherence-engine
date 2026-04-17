@@ -1,0 +1,2296 @@
+You are continuing implementation in this repository.
+
+AUTOMATED PRE-SEED PIPELINE COMPLETION (prompts 01–20)
+------------------------------------------------------
+
+The 20-prompt Wave 1–6 program that rebuilt the automated pre-seed pipeline
+on top of the existing fund orchestrator backend is closed. Every
+prompt's artifacts have been verified on disk via
+``deploy/scripts/release_readiness_check.py`` (see ``MOST RECENT PROMPT``
+below for the checklist contract). See the per-prompt detail blocks
+further in this file for the full evidence.
+
+  01  Decision policy formalization — `docs/specs/decision_policy_spec.md`,
+      `server/fund/services/decision_policy.py`
+      (`DECISION_POLICY_VERSION = "decision-policy-v1"`),
+      `alembic/versions/20260417_000001_decision_policy_version.py`.
+  02  Canonical event schemas + offline validator —
+      `server/fund/schemas/events/*.v1.json`,
+      `server/fund/services/event_schemas.py`,
+      `docs/specs/event_schemas.md`.
+  03  Transcript quality gate — `server/fund/services/transcript_quality.py`,
+      `core/types.py` (`Transcript`, `TranscriptTurn`),
+      `server/fund/data/interview_topics.json`.
+  04  Transcript → proposition compiler — `core/transcript_compiler.py`,
+      `core/parser.py` (`parse_transcript`), `core/types.py`
+      (`ProvenanceSpan`).
+  05  Ontology entity + relation extractor — `domain/ontology.py`,
+      `core/types.py` (`Entity`, `OntologyEdge`, `OntologyGraph`),
+      `server/fund/data/ontology_lexicon.json`.
+  06  Hybrid domain reconstruction — `domain/detector.py`
+      (`detect_domain_mix`), `domain/normative.py`, `core/types.py`
+      (`DomainMix`, `NormativeProfile`).
+  07  Reproducible decision artifact — `server/fund/services/decision_artifact.py`,
+      `server/fund/schemas/artifacts/decision_artifact.v1.json`,
+      `alembic/versions/20260417_000002_artifact_kind.py`.
+  08  Prompt registry with SHA pinning —
+      `server/fund/services/prompt_registry.py`,
+      `data/prompts/registry.json`, `docs/specs/prompt_registry.md`.
+  09  Anti-gaming detector integration — `core/anti_gaming.py`,
+      `core/scorer.py`, `server/fund/services/scoring.py`.
+  10  Portfolio state + concentration — `server/fund/models.py`
+      (`PortfolioState`, `Position`),
+      `server/fund/repositories/portfolio_repository.py`,
+      `server/fund/services/decision_policy.py` (`PortfolioStateProvider`),
+      `alembic/versions/20260417_000003_portfolio_state.py`.
+  11  Historical backtest pipeline — `server/fund/services/backtest.py`,
+      `docs/specs/backtest_spec.md`, `deploy/scripts/run_backtest.py`,
+      `tests/fixtures/backtest/`.
+  12  Shadow mode + ``scoring_mode`` enforcement —
+      `server/fund/services/application_service.py` (enforce/shadow branch),
+      `alembic/versions/20260417_000004_scoring_mode.py`,
+      `server/fund/schemas/events/decision_issued.v1.json` (optional
+      ``mode`` field).
+  13  Red-team adversarial harness — `server/fund/services/red_team.py`,
+      `tests/adversarial/fixtures/`, `tests/adversarial/labels.json`,
+      `docs/specs/red_team_harness.md`.
+  14  Notification service — `server/fund/services/notifications.py`,
+      `server/fund/services/notification_backends.py`,
+      `server/fund/data/notification_templates/`,
+      `alembic/versions/20260417_000005_notification_log.py`.
+  15  Workflow orchestrator — `server/fund/services/workflow.py` (9-stage
+      pipeline), `server/fund/models.py` (`WorkflowRun`, `WorkflowStep`),
+      `alembic/versions/20260417_000006_workflow_checkpoints.py`.
+  16  End-to-end reproducibility integration test —
+      `tests/integration/test_e2e_pipeline.py` (`@pytest.mark.e2e`),
+      `tests/integration/conftest.py`,
+      `tests/integration/fixtures/e2e_*.json`.
+  17  OpenAPI refresh + SDK stub generator —
+      `docs/specs/openapi_v1.yaml`, `scripts/generate_sdk_stubs.py`,
+      `sdk/python/coherence_fund_client/client.py`,
+      `server/fund/routers/workflow.py`.
+  18  Observability + pipeline SLO coverage —
+      `server/fund/services/ops_telemetry.py` (`record_stage`),
+      `docs/ops/slo_metrics.md`,
+      `deploy/helm/templates/prometheus-rules-pipeline.yaml`,
+      `deploy/k8s/prometheus/rules-pipeline.yaml`.
+  19  Read-only admin dashboard (HTMX) —
+      `server/fund/routers/admin_ui.py`, `server/fund/templates/admin/`,
+      `server/fund/static/admin/htmx.min.js` (vendored, MIT-family
+      license banner).
+  20  Release readiness checklist + docs sync —
+      `deploy/scripts/release_readiness_check.py` (network-free checklist),
+      `Makefile` (`release-readiness` target),
+      `docs/ops/release_readiness.md`,
+      `tests/test_release_readiness_check.py`.
+
+
+CONTEXT
+-------
+
+You are working on a dual-track codebase:
+
+1) Core Coherence Engine (stable)
+- 5-layer coherence scoring pipeline + weighted composite.
+- Domain comparison support.
+- Graceful degradation is required behavior.
+
+2) Fund Orchestrator Backend (`server/fund/`) (active buildout)
+- API + SQLAlchemy + Alembic + async workers.
+- `/api/v1/*` contracts exist and must remain stable.
+- Current flow: create application -> create interview session -> enqueue scoring
+  -> `process-scoring-jobs` writes artifacts/decision/events -> `dispatch-outbox`
+  publishes events.
+- Security baseline already implemented: DB-backed API keys, role checks, rate
+  limiting, audit logging, secret-manager policy checks, deploy preflight gating.
+
+WHAT TO IMPLEMENT NEXT (IN ORDER)
+---------------------------------
+
+Follow the ordered backlog in `COHERENCE_ENGINE_PROJECT_STATUS.txt` → **NEXT-STAGE PRIORITIES**
+(current focus: governed calibration ingestion + ops hygiene for CI governance artifacts).
+
+IMPLEMENTED RECAP (MOST RECENT)
+-------------------------------
+
+- Decision policy formalization completion:
+  - Canonical spec pinned at `decision-policy-v1` (schema_version 1) with
+    parameter table, `R(S, portfolio_state)` code-symbol map, deterministic
+    approval predicate, and v2-bump rules: `docs/specs/decision_policy_spec.md`.
+  - `DECISION_POLICY_VERSION = "decision-policy-v1"` exported from
+    `server/fund/services/decision_policy.py`; persisted per-decision via
+    nullable `fund_decisions.decision_policy_version` column
+    (`alembic/versions/20260417_000001_decision_policy_version.py`).
+  - Tests: `tests/test_decision_policy_spec.py`.
+
+- Governance channel automation completion:
+  - Webhook-mode escalation delivery verification (canary/prod) with deterministic
+    dry-run probes, optional HMAC-signed receipts, schedule-safe defaults, and
+    optional manual live POST:
+    - `deploy/scripts/route_governance_attestation_escalation.py`
+      (`emit-webhook-delivery-receipt`)
+    - `.github/workflows/uncertainty-attestation-lifecycle.yml` job
+      `governance-escalation-webhook-delivery-receipt` → artifact
+      `governance-escalation-webhook-delivery-receipt`
+  - Org enrollment coverage vs trend aggregate inputs with SLA exception manifest
+    support and optional failing gate:
+    - `deploy/scripts/report_governance_enrollment_coverage.py`
+    - `deploy/ops/governance-enrollment-sla-exception-manifest.example.json`
+    - `.github/workflows/governance-attestation-trend-aggregation.yml`
+  - Tests: `tests/test_route_governance_escalation_routing_proof.py`,
+    `tests/test_report_governance_enrollment_coverage.py`,
+    `tests/test_uncertainty_attestation_lifecycle_workflow_contract.py`,
+    `tests/test_governance_attestation_trend_aggregation_workflow_contract.py`
+- Tracker closure synchronization completion:
+  - Optional reconciliation write-back into follow-up markdown artifacts (opt-in
+    repo var) after tracker handoff:
+    - `deploy/scripts/validate_oncall_tracker_handoff.py` (`writeback-reconciliation`)
+    - `.github/workflows/oncall-route-verification.yml`
+      (`ONCALL_TRACKER_HANDOFF_WRITEBACK_RECONCILIATION`)
+  - Scheduled tracker handoff governance report (policy, drift, outcomes,
+    reconciliation coverage):
+    - `.github/workflows/oncall-tracker-handoff-governance-report.yml`
+    - `deploy/scripts/report_oncall_tracker_handoff_governance.py`
+  - Tests: `tests/test_validate_oncall_tracker_handoff.py`,
+    `tests/test_report_oncall_tracker_handoff_governance.py`,
+    `tests/test_oncall_route_verification_workflow_contract.py`
+  - Docs: `docs/ops/README.md`,
+    `docs/ops/runbooks/production_observability_rollout.md`
+
+- Governed historical dataset merge completion:
+  - Deterministic merge of JSON/JSONL outcome batches into governed
+    `uncertainty_historical_outcomes.jsonl` with SHA-256 manifest refresh,
+    fingerprint dedupe, optional `--strict-incoming`, and byte pass-through when
+    no `--incoming` files are supplied:
+    - `server/fund/services/governed_historical_dataset.py`
+    - `server/fund/services/uncertainty_calibration.py` (`to_governed_jsonl_record`)
+    - `python -m coherence_engine uncertainty-profile merge-historical-dataset …`
+    - `deploy/scripts/merge_governed_historical_outcomes.py`
+  - Tests: `tests/test_governed_historical_dataset.py`
+  - Docs: `docs/ops/README.md` (governed calibration dataset)
+
+- Historical outcomes export validation completion:
+  - `validate_historical_outcomes_export` + optional `--require-standard-layer-keys`;
+    `GOVERNED_LAYER_SCORE_KEY_ORDER` in `uncertainty_calibration.py`.
+  - Example: `deploy/ops/uncertainty-historical-outcomes-export.example.json`.
+  - CLI `uncertainty-profile validate-historical-export` and
+    `deploy/scripts/validate_historical_outcomes_export.py` (exit **2** on failure).
+  - Tests: `tests/test_validate_historical_outcomes_export.py`
+
+- Recalibration CI historical export example gate completion:
+  - `.github/workflows/uncertainty-recalibration.yml` runs
+    `uncertainty-profile validate-historical-export` on
+    `deploy/ops/uncertainty-historical-outcomes-export.example.json` with
+    `--require-standard-layer-keys` after editable install.
+  - `make validate-historical-export-example` in `Makefile` for local parity.
+  - Tests: `tests/test_uncertainty_recalibration_workflow_contract.py`
+
+- Production → export extraction completion:
+  - Enriched `CoherenceScored` outbox event with calibration fields
+    (`n_propositions`, `transcript_quality_score`, `n_contradictions`);
+    added `n_contradictions` to scoring service return dict:
+    - `server/fund/services/scoring.py`
+    - `server/fund/services/application_service.py`
+  - Added deterministic export service joining scored event payloads with
+    operator-provided outcomes annotations; legacy `n_contradictions`
+    derivation from `anti_gaming_score`:
+    - `server/fund/services/calibration_export.py`
+  - CLI: `uncertainty-profile export-historical-outcomes`
+    (`--scored-events`, `--outcomes`, `--output`, `--require-standard-layer-keys`)
+  - Deploy script: `deploy/scripts/export_historical_outcomes.py`
+  - Tests: `tests/test_calibration_export.py`
+  - Docs: `docs/ops/README.md` (production → export extraction section)
+
+- Governance / on-call ops hygiene review tooling completion:
+  - Local aggregator `deploy/scripts/report_governance_ops_hygiene_review.py` folds
+    optional enrollment, webhook receipt, routing proof, and tracker handoff
+    governance JSON into one `governance_ops_hygiene_review` bundle + Markdown
+    reminders (secret rotation, drift, enrollment gaps); no network.
+  - `pyproject.toml` pytest `pythonpath = [".."]` for clean-checkout imports.
+  - Tests: `tests/test_report_governance_ops_hygiene_review.py`
+  - Docs: `docs/ops/README.md`, `docs/ops/runbooks/production_observability_rollout.md`
+
+- Governance rollout execution closure completion:
+  - Governance trend aggregation workflow now enforces private baselines in
+    scheduled runs via environment-scoped secret inputs, with manual fallback
+    only in workflow_dispatch testing mode:
+    - `.github/workflows/governance-attestation-trend-aggregation.yml`
+  - Added scheduled SLA-input guardrails and environment governance selection:
+    - `governance_environment` dispatch input and
+      `vars.GOVERNANCE_ATTESTATION_TREND_ENVIRONMENT` support.
+  - Added dedicated canary/prod escalation channel routing map:
+    - `deploy/ops/governance-attestation-escalation-routing-map.example.json`
+  - Added recurring routing proof artifact generation (no-network):
+    - `.github/workflows/uncertainty-attestation-lifecycle.yml`
+    - `deploy/scripts/route_governance_attestation_escalation.py`
+      (`emit-routing-proof`)
+  - Promotion workflows now exercise map-driven canary/prod routing defaults:
+    - `.github/workflows/uncertainty-recalibration.yml`
+    - `.github/workflows/uncertainty-promotion-gate.yml`
+  - Added/updated tests:
+    - `tests/test_governance_attestation_trend_aggregation_workflow_contract.py`
+    - `tests/test_route_governance_escalation_routing_proof.py`
+    - `tests/test_uncertainty_attestation_lifecycle_workflow_contract.py`
+    - `tests/test_uncertainty_recalibration_workflow_contract.py`
+    - `tests/test_uncertainty_promotion_gate_workflow_contract.py`
+- On-call tracker delivery closure completion:
+  - Extended tracker handoff governance script with policy source precedence
+    reporting and per-environment drift telemetry vs built-in defaults:
+    - `deploy/scripts/validate_oncall_tracker_handoff.py`
+  - Added reconciliation output capture for tracker responses (issue key/id/number
+    and redacted resource hint), linked to closure artifacts in result rows.
+  - Updated on-call workflow summary and artifact contracts for policy resolution,
+    drift visibility, and reconciliation evidence:
+    - `.github/workflows/oncall-route-verification.yml`
+  - Updated docs and tests:
+    - `docs/ops/README.md`
+    - `docs/ops/runbooks/production_observability_rollout.md`
+    - `tests/test_validate_oncall_tracker_handoff.py`
+    - `tests/test_oncall_route_verification_workflow_contract.py`
+
+- Governance operations scale-out completion:
+  - Added governance ownership SLA policy example and aggregate SLA evaluation
+    artifacts:
+    - `deploy/ops/governance-attestation-sla-policy.example.json`
+    - `governance-attestation-sla-evaluation.json` / `.md` (workflow artifact outputs)
+  - Extended trend aggregation workflow/script with optional SLA policy
+    resolution from secret/var/path and breach reporting:
+    - `.github/workflows/governance-attestation-trend-aggregation.yml`
+    - `deploy/scripts/aggregate_governance_attestation_reports.py`
+  - Added promotion-environment escalation routing hook with safe-by-default
+    no-op behavior and optional file/webhook delivery:
+    - `deploy/scripts/route_governance_attestation_escalation.py`
+  - Wired escalation routing hook into promotion workflows:
+    - `.github/workflows/uncertainty-recalibration.yml`
+    - `.github/workflows/uncertainty-promotion-gate.yml`
+  - Added/updated tests:
+    - `tests/test_governance_attestation_aggregator.py`
+    - `tests/test_governance_attestation_trend_aggregation_workflow_contract.py`
+    - `tests/test_governance_attestation_age_reporter.py`
+    - `tests/test_uncertainty_recalibration_workflow_contract.py`
+    - `tests/test_uncertainty_promotion_gate_workflow_contract.py`
+- On-call API governance scale-out completion:
+  - Added deterministic tracker handoff validator/executor for provider
+    contracts + policy overlays:
+    - `deploy/scripts/validate_oncall_tracker_handoff.py`
+  - Added environment-governed tracker handoff policy example:
+    - `deploy/ops/oncall_tracker_handoff_policy.example.json`
+  - Updated on-call route verification workflow to enforce contract checks
+    before live POST and emit richer governance audit outputs:
+    - `.github/workflows/oncall-route-verification.yml`
+  - Added/updated tests and docs:
+    - `tests/test_validate_oncall_tracker_handoff.py`
+    - `tests/test_oncall_route_verification_workflow_contract.py`
+    - `docs/ops/README.md`
+    - `docs/ops/runbooks/production_observability_rollout.md`
+
+- Governance lifecycle operationalization completion:
+  - Added reusable governance attestation check workflow for environment-scoped
+    secret/reviewer governance patterns:
+    - `.github/workflows/reusable-governance-attestation-check.yml`
+  - Added cross-repo-ready trend aggregation workflow and aggregator utility:
+    - `.github/workflows/governance-attestation-trend-aggregation.yml`
+    - `deploy/scripts/aggregate_governance_attestation_reports.py`
+  - Enhanced lifecycle reporter with source repository/run metadata and
+    generated trend/SLA dashboard artifacts.
+  - Updated lifecycle/baseline workflows to use reusable checks and environment
+    governance references.
+  - Added tests:
+    - `tests/test_governance_attestation_aggregator.py`
+    - `tests/test_governance_attestation_trend_aggregation_workflow_contract.py`
+- On-call governance operationalization completion:
+  - Added environment-scoped exception/snooze approval workflow:
+    - `.github/workflows/oncall-evidence-exception-approval.yml`
+  - Added policy-as-code exception constraints and policy file support:
+    - `deploy/ops/oncall_evidence_exception_policy.example.json`
+    - `deploy/scripts/evaluate_oncall_evidence_exception.py`
+  - Added provider-specific tracker handoff adapters (`generic`/`jira`/`github`)
+    with idempotency keys and bounded retry/backoff in:
+    - `.github/workflows/oncall-route-verification.yml`
+  - Added/updated tests and docs for exception policy controls and handoff
+    adapter behaviors.
+- Governance attestation lifecycle completion:
+  - Added scheduled attestation-aging report workflow independent of promotion:
+    - `.github/workflows/uncertainty-attestation-lifecycle.yml`
+  - Added deterministic attestation reporter + escalation artifact generation:
+    - `deploy/scripts/report_governance_attestation_age.py`
+  - Added stale-attestation escalation artifacts and explicit breach signaling
+    in promotion workflows:
+    - `.github/workflows/uncertainty-recalibration.yml`
+    - `.github/workflows/uncertainty-promotion-gate.yml`
+  - Added tests for lifecycle workflow/reporter and promotion contracts:
+    - `tests/test_uncertainty_attestation_lifecycle_workflow_contract.py`
+    - `tests/test_governance_attestation_age_reporter.py`
+- On-call evidence governance completion:
+  - Added exception/snooze evaluator with approval traceability for release/nonprod gates:
+    - `deploy/scripts/evaluate_oncall_evidence_exception.py`
+    - `deploy/ops/oncall_evidence_exceptions.example.json`
+  - Added release/nonprod evidence freshness + exception decision artifacts:
+    - `.github/workflows/release.yml`
+    - `.github/workflows/nonprod-release-smoke.yml`
+  - Added optional tracker API handoff job for generated live-drill payloads
+    (opt-in, secrets-gated, safe by default):
+    - `.github/workflows/oncall-route-verification.yml`
+  - Updated contract tests and runbook/docs for handoff and governance controls.
+- Governance adoption completion:
+  - Governance baseline verification now uses environment-scoped secret baselines
+    in hosted CI and rejects example baseline paths in CI mode:
+    - `.github/workflows/uncertainty-policy-governance-verification.yml`
+    - `deploy/scripts/verify_uncertainty_policy_baselines.py`
+  - Added canary/prod ownership-attestation rotation checks with stale blocking
+    and reminder windows in promotion workflows:
+    - `.github/workflows/uncertainty-recalibration.yml`
+    - `.github/workflows/uncertainty-promotion-gate.yml`
+  - Promotion continuity manifests now include attestation age/threshold metadata
+    for auditability.
+- On-call enforcement completion:
+  - Added environment-specific follow-up template outputs directly in live-drill
+    workflow artifacts (markdown issue bodies + ticket payload JSON):
+    - `.github/workflows/oncall-route-verification.yml`
+  - Added release/nonprod evidence-age gates using latest successful
+    `oncall-route-verification` live-drill artifact metadata:
+    - `.github/workflows/release.yml`
+    - `.github/workflows/nonprod-release-smoke.yml`
+  - Updated runbooks/templates and contract tests for the new enforcement path.
+- Governance production adoption hardening completion:
+  - Replaced example baseline usage in governance verification workflow with
+    private baseline JSON resolution from secret/variable:
+    - `.github/workflows/uncertainty-policy-governance-verification.yml`
+  - Added strict CI protection to reject example baseline paths in verification:
+    - `deploy/scripts/verify_uncertainty_policy_baselines.py`
+      (`--reject-example-baseline-path` in CI path)
+  - Added environment-scoped promotion controls and ownership attestations for
+    canary/prod:
+    - `.github/workflows/uncertainty-promotion-gate.yml`
+    - `.github/workflows/uncertainty-recalibration.yml`
+  - Added attestation continuity fields into promotion manifests and contract
+    tests for governance workflow wiring.
+- On-call live-drill operational closure:
+  - Added environment-specific live drill runbooks:
+    - `docs/ops/runbooks/live_drill_staging.md`
+    - `docs/ops/runbooks/live_drill_prod.md`
+  - Added incident follow-up issue template hooks:
+    - `.github/ISSUE_TEMPLATE/oncall-live-drill-followup.yml`
+    - `.github/ISSUE_TEMPLATE/config.yml`
+  - Tightened release/nonprod deploy blocking with stale-policy + stale-evidence
+    checks in verifier calls:
+    - `.github/workflows/release.yml`
+    - `.github/workflows/nonprod-release-smoke.yml`
+  - Added/updated contract and verifier tests for these closure controls.
+- Governance operations enablement completion:
+  - Added governance baseline registry example and deterministic drift verifier:
+    - `deploy/ops/uncertainty-governance-policy-baselines.example.json`
+    - `deploy/scripts/verify_uncertainty_policy_baselines.py`
+  - Added recurring governance baseline verification workflow with drift alert
+    signaling and artifact publishing:
+    - `.github/workflows/uncertainty-policy-governance-verification.yml`
+  - Added governance policy CI metadata references in:
+    - `data/governed/uncertainty_governance_policy.json`
+  - Added tests for verifier and workflow contract coverage:
+    - `tests/test_uncertainty_policy_baselines_verifier.py`
+    - `tests/test_uncertainty_policy_governance_workflow_contract.py`
+- On-call operational rollout completion:
+  - Replaced example policy dependency in release/nonprod pipelines with
+    private policy inputs via secret/variable resolution and enforcement:
+    - `.github/workflows/release.yml`
+    - `.github/workflows/nonprod-release-smoke.yml`
+  - Added scheduled live-provider drill windows (opt-in), retention controls,
+    and incident follow-up checklist artifact hooks in:
+    - `.github/workflows/oncall-route-verification.yml`
+  - Added contract tests for release/nonprod and recurring workflow controls:
+    - `tests/test_release_workflow_contract.py`
+    - `tests/test_nonprod_release_smoke_workflow_contract.py`
+    - `tests/test_oncall_route_verification_workflow_contract.py`
+  - Updated ops/deploy docs for private policy inputs, drill windows, retention,
+    and follow-up checklist expectations.
+- Governance rollout hardening completion:
+  - Extended promotion automation in
+    `.github/workflows/uncertainty-recalibration.yml` beyond shadow to
+    controlled canary/prod paths with explicit token-gated approvals.
+  - Added manual promotion workflow for canary/prod with source-run continuity:
+    - `.github/workflows/uncertainty-promotion-gate.yml`
+  - Added promotion audit continuity outputs (`registry`, governance audit log,
+    and continuity manifest artifacts) for automated/manual promotion paths.
+  - Added policy pinning support via
+    `UNCERTAINTY_GOVERNANCE_POLICY_SHA256` checks in promotion workflows.
+  - Added workflow contract tests for promotion hardening paths.
+- On-call release gating integration completion:
+  - Added deterministic on-call gate job in `.github/workflows/release.yml`
+    and made production deploy depend on successful preflight + on-call gate.
+  - Added mirrored safe on-call gate checks in
+    `.github/workflows/nonprod-release-smoke.yml`.
+  - Extended recurring verification with stale-policy and escalation-rotation
+    checks in `.github/workflows/oncall-route-verification.yml`.
+  - Enhanced on-call policy verifier and policy schema support:
+    - `deploy/scripts/verify_oncall_route_policy.py`
+    - `deploy/ops/oncall-route-policy.example.json`
+  - Added/updated tests and docs for policy hardening and release-readiness
+    artifact expectations.
+- Calibration governance operationalization completion:
+  - Added stage-managed governance policy artifact:
+    - `data/governed/uncertainty_governance_policy.json`
+  - Added policy loading and stage threshold resolution in governance service.
+  - Extended uncertainty profile CLI with policy-aware controls:
+    - `--governance-policy` for `promote`, `evaluate-gates`, `rollback`,
+      and `rollback-policy-eval`
+    - `--policy-stage` for stage-resolved `evaluate-gates` and
+      `rollback-policy-eval`
+  - Enforced policy-managed promotion in automation path:
+    - `.github/workflows/uncertainty-recalibration.yml` promotion now runs with
+      `--governance-policy data/governed/uncertainty_governance_policy.json`
+  - Added scheduled rollback evidence evaluation workflow:
+    - `.github/workflows/uncertainty-rollback-verification.yml`
+    - publishes `uncertainty-rollback-policy-report` artifact.
+- On-call rollout completion per environment:
+  - Added environment mapping policy and verifier:
+    - `deploy/ops/oncall-route-policy.example.json`
+    - `deploy/scripts/verify_oncall_route_policy.py`
+  - Added recurring verification artifact capture in CI:
+    - `.github/workflows/oncall-route-verification.yml` now emits
+      `oncall-release-readiness` artifact bundle and optional
+      `oncall-live-webhook-drill` artifact.
+  - Added environment/provider/escalation mapping verification tests:
+    - `tests/test_oncall_route_policy_verifier.py`
+  - Updated deploy and ops docs with per-provider secret/receiver wiring and
+    release-readiness evidence expectations.
+- Automated calibration governance completion:
+  - Added objective gate evaluation (`coverage`, `mean_width`, `record_count`,
+    plus optional baseline deltas) for candidate profile approval/rejection.
+  - Extended `uncertainty-profile promote` with governance gate flags and
+    explicit `--force` override recording.
+  - Added signed/audited governance records (`JSONL`) for promotion/rollback
+    using deterministic HMAC-SHA256 when
+    `COHERENCE_UNCERTAINTY_GOVERNANCE_HMAC_KEY` is configured.
+  - Added deterministic rollback policy evaluation commands:
+    - `python -m coherence_engine uncertainty-profile evaluate-gates ...`
+    - `python -m coherence_engine uncertainty-profile rollback-policy-eval ...`
+    - `python -m coherence_engine uncertainty-profile rollback --health-metrics-json ... --governance-audit-log ...`
+- Production on-call integration hardening completion:
+  - Extended worker alert routing with concrete provider modes:
+    `pagerduty`, `opsgenie`, and `alertmanager` (with safe fallback behavior).
+  - Added synthetic drill tooling:
+    - `python deploy/scripts/synthetic_alert_drill.py --json`
+    - `python deploy/scripts/synthetic_alert_drill.py --verify-only`
+  - Added recurring CI verification workflow:
+    - `.github/workflows/oncall-route-verification.yml`
+    - Weekly safe-mode drill with optional manual live webhook drill.
+  - Added recalibration promotion governance gate in CI:
+    - `.github/workflows/uncertainty-recalibration.yml` now requires
+      `governance_acknowledged=true` plus matching promotion token for shadow promotion.
+- Continuous calibration operations completion:
+  - Added governed historical calibration dataset + checksum manifest.
+  - Added scheduled recalibration workflow with dataset verification,
+    candidate profile artifact publication, and optional shadow promotion.
+  - Added staged profile registry with deterministic promotion and rollback:
+    - `python -m coherence_engine uncertainty-profile promote ...`
+    - `python -m coherence_engine uncertainty-profile rollback ...`
+    - `python -m coherence_engine uncertainty-profile verify-dataset ...`
+- Production observability rollout completion:
+  - Added runtime telemetry warning alert routing with env-configurable
+    `none|file|webhook` modes, cooldown, dedupe, and severity mapping.
+  - Added deployment-target observability runbook and SLO threshold standards.
+  - Added additive Prometheus rule assets for k8s and helm-gated deployments.
+- Calibration and policy tuning completion:
+  - Historical uncertainty calibration pipeline implemented with deterministic
+    grid-search fitting and new CLI:
+    - `python -m coherence_engine calibrate-uncertainty <records.json|jsonl> --output <profile.json>`
+  - Runtime uncertainty profiles now support env/file overlays with graceful
+    fallback to defaults.
+  - Portfolio policy expanded with richer `R(S, portfolio_state)` terms:
+    liquidity reserve pressure, domain-USD concentration, drawdown proxy, and
+    regime-aware threshold adjustments.
+- Centralized observability completion:
+  - Worker ops telemetry now routes through a shared sink layer:
+    log (default), optional JSONL file sink, optional Prometheus textfile sink.
+  - SLO metric docs and Grafana dashboard import asset added in `docs/ops/`.
+- Model correctness completion:
+  - Heuristic confidence interval logic replaced with calibrated deterministic
+    uncertainty modeling (`fund-cs-superiority-v1`) in fund scoring.
+  - Policy logic expanded toward `R(S, portfolio_state)` with
+    capacity/concentration/pressure-aware decision adjustments.
+- Ops completeness completion:
+  - Dedicated scoring-worker deploy assets added across systemd/k8s/helm
+    wherever outbox worker assets exist.
+  - Queue depth/latency/failure telemetry added as worker ops snapshots with
+    threshold-based warning tags.
+  - Alert hooks added for `/secret-manager/ready` watchdog failures and
+    deploy preflight-gate failure signaling in CI.
+- Worker reliability hardening completed:
+  - Scoring claim semantics now support lease-based reclaim to reduce duplicate
+    processing across concurrent workers.
+  - Retry behavior now uses exponential backoff for scoring jobs and outbox rows.
+  - Dead-letter replay tooling added via:
+    - `python -m coherence_engine replay-scoring-jobs ...`
+    - `python -m coherence_engine replay-outbox ...`
+- Security hardening completion completed:
+  - Cloud-backed staging integration tests for provider policy added at:
+    - `tests/integration/test_secret_manager_cloud_staging.py`
+    - `.github/workflows/secret-manager-staging-integration.yml`
+  - Non-prod release smoke workflow added for helm/k8s/systemd:
+    - `.github/workflows/nonprod-release-smoke.yml`
+  - Endpoint-level role ownership docs published in:
+    - `docs/specs/api_contracts_v1.md`
+    - `docs/specs/openapi_v1.yaml` (`x-required-roles`)
+
+NON-NEGOTIABLE CONSTRAINTS
+--------------------------
+
+- Preserve existing CLI commands and backward compatibility when practical.
+- Keep `/api/v1/*` contract-stable.
+- Use Alembic for all schema changes.
+- Do not remove systemd/k8s/helm deploy bundles.
+- Keep core graceful-degradation behavior.
+- Avoid flaky network-dependent behavior in default CI tests.
+
+DONE CRITERIA FOR EACH IMPLEMENTATION STEP
+------------------------------------------
+
+- Code + tests updated.
+- No stale TODOs for completed work.
+- Both docs updated and synchronized:
+  - `COHERENCE_ENGINE_PROJECT_STATUS.txt`
+  - `COHERENCE_ENGINE_CONTINUATION_PROMPT.txt`
+- Remove items from "next work" once implemented; move them into implemented
+  recap sections.
+
+HIGH-VALUE FILES
+----------------
+
+- `core/scorer.py`
+- `layers/*`
+- `domain/comparator.py`
+- `server/fund/app.py`
+- `server/fund/routers/applications.py`
+- `server/fund/services/application_service.py`
+- `server/fund/services/scoring.py`
+- `server/fund/repositories/application_repository.py`
+- `server/fund/scoring_worker.py`
+- `server/fund/services/outbox_dispatcher.py`
+- `deploy/*`
+- `docs/specs/*`
+- `alembic/versions/*`
+
+QUICK COMMANDS
+--------------
+
+- `python -m coherence_engine serve-fund --host 0.0.0.0 --port 8010`
+- `alembic upgrade head`
+- `python -m coherence_engine process-scoring-jobs --run-mode loop`
+- `python -m coherence_engine dispatch-outbox --backend redis --run-mode loop --redis-url redis://localhost:6379/0`
+- `python -m pytest tests/ -v`
+- `python -m pytest tests/test_secret_manager_policy_matrix.py -v`
+- `make test-provider-policy-matrix`
+- `python deploy/scripts/secret_manager_preflight.py --require-reachable`
+- `make preflight-secret-manager`
+- `python -m coherence_engine uncertainty-profile validate-historical-export --input ./artifacts/export.jsonl` (repo parent on `PYTHONPATH` if not installed)
+- `python deploy/scripts/validate_historical_outcomes_export.py --input ./artifacts/export.jsonl`
+- `make validate-historical-export-example` (same strict check as `.github/workflows/uncertainty-recalibration.yml`)
+- `python -m coherence_engine uncertainty-profile export-historical-outcomes --scored-events ./artifacts/scored_events.json --outcomes ./artifacts/outcomes.json --output ./artifacts/export.json` (production → export extraction)
+- `python deploy/scripts/export_historical_outcomes.py --scored-events ./artifacts/scored_events.json --outcomes ./artifacts/outcomes.json --output ./artifacts/export.json`
+
+RECENT CHANGES — 2026-04-16 (Wave 1, prompt 02/20)
+--------------------------------------------------
+
+Canonical fund pipeline event schemas (v1) landed with strict offline validation.
+
+- JSON Schema Draft 2020-12 documents for `interview_completed`,
+  `argument_compiled`, `decision_issued`, `founder_notified` under
+  `server/fund/schemas/events/`; each declares `additionalProperties: false`
+  with `examples[]`.
+- New validator: `server/fund/services/event_schemas.py` exposes
+  `SUPPORTED_EVENTS`, `load_schema`, `EventValidationError`, `validate_event`,
+  with a required-keys fallback (and one-time warning) when jsonschema is
+  unavailable.
+- `server/fund/services/event_publisher.py` now builds the merged
+  envelope+payload event object and validates via `validate_event` before
+  outbox enqueue. Strict mode is controlled by `COHERENCE_FUND_STRICT_EVENTS`
+  (default "true"); lenient mode logs and enqueues.
+- `server/fund/services/application_service.py` producers updated minimally to
+  include the canonical v1 required fields (session_id, transcript_ref,
+  duration_s, asr_confidence_avg, argument_graph_ref, cs_superiority,
+  cs_required, decision_policy_version, scoring_version); internal `fail`
+  decision is published as `reject` to match the canonical enum.
+- Docs index: `docs/specs/event_schemas.md` (envelope table + per-event
+  required-fields summary + validator usage).
+- Tests: `tests/test_event_schemas.py` (18 cases; strict + lenient publisher
+  paths covered). Full fund-area suite (82 tests) green.
+
+Verify with:
+  python3 -m pytest tests/test_event_schemas.py -v
+  python3 -c "from coherence_engine.server.fund.services.event_schemas import load_schema; print(list(load_schema('decision_issued')['required']))"
+
+
+RECENT CHANGES — 2026-04-16 (Wave 1, prompt 03/20)
+--------------------------------------------------
+
+Canonical Transcript dataclass + deterministic transcript quality gate landed.
+
+- `core/types.py`: frozen `TranscriptTurn` (speaker/text/confidence/start_s/end_s)
+  and frozen `Transcript` (session_id/language/turns:tuple/asr_model:Optional).
+- `server/fund/data/interview_topics.json`: rubric taxonomy for topic coverage —
+  problem, solution_mechanism, evidence, market, moat, execution, self_critique.
+- `config.py`: frozen `TranscriptQualityThresholds` with `from_env()` and
+  `COHERENCE_TQG_*` env overrides. Defaults: min_founder_words=400, min_turns=20,
+  min_avg_confidence=0.70, max_low_conf_ratio=0.15, min_topic_coverage=0.60.
+- `server/fund/services/transcript_quality.py`:
+  `evaluate_transcript(transcript, *, config=None, topics=None) -> TranscriptQualityReport`
+  computing founder-words, total turns, avg ASR confidence, low-confidence-turn
+  ratio (confidence<0.6), topic-coverage ratio. Reason codes:
+  TQG_FOUNDER_WORDS_LOW, TQG_TURNS_LOW, TQG_ASR_CONFIDENCE_LOW,
+  TQG_LOW_CONFIDENCE_RATIO_HIGH, TQG_TOPIC_COVERAGE_LOW. Composite `score` is a
+  weighted average over normalized sub-metrics (weights documented in the module
+  docstring); `passed` iff every threshold is met independently of `score`.
+- `server/fund/services/application_service.py`: `trigger_scoring` now accepts an
+  optional `transcript: Transcript | None`. When provided and `passed=False`,
+  the scoring job is NOT enqueued — instead a `TranscriptRejected` event lands
+  in the outbox and a placeholder `FounderNotified` event is published with
+  `channel="dry_run"` and `notification_status="suppressed"`. When `transcript`
+  is None the original behavior is preserved (backward compatible).
+- `tests/test_transcript_quality.py`: 8 tests covering happy path, short
+  founder text, low ASR confidence, missing topics, too-few turns, env-driven
+  threshold override, determinism, metrics shape.
+
+No new runtime dependencies are introduced. The gate is lexical/numeric only —
+no torch, transformers, or ASR libraries.
+
+Verify with:
+  PYTHONPATH=. python3 -m pytest coherence_engine/tests/test_transcript_quality.py -v
+  PYTHONPATH=. python3 -c "from coherence_engine.core.types import Transcript, TranscriptTurn; print('ok')"
+
+
+RECENT CHANGES — 2026-04-16 (Wave 2, prompt 04/20)
+--------------------------------------------------
+
+Deterministic transcript -> proposition compiler landed, bridging the
+Transcript dataclass (prompt 03) to the Proposition/Relation structures
+the existing scoring layers already consume.
+
+- `core/types.py`: added frozen `ProvenanceSpan` (session_id, turn_index,
+  start_s, end_s, speaker). `Proposition` gains an optional
+  `provenance: tuple[ProvenanceSpan, ...] = None` field — legacy callers
+  remain compatible (default None; required-field order preserved).
+- `core/transcript_compiler.py` (NEW):
+  - `CompiledArgument` dataclass with `propositions: tuple[Proposition, ...]`,
+    `relations: tuple[Relation, ...]`, `dropped_turn_count: int`,
+    `notes: tuple[str, ...]`.
+  - `compile_transcript(transcript: Transcript) -> CompiledArgument`:
+    keeps only `speaker == "founder"` turns, drops turns with
+    `confidence < 0.5` (counted in `dropped_turn_count`), splits each
+    kept turn into sentences with a simple regex (no nltk/spacy), dedups
+    by case/whitespace-folded key (preserving original text), and emits
+    one Proposition per surviving sentence with a single-entry
+    `ProvenanceSpan` tuple pointing back to the originating turn.
+  - Relation extraction reuses `ArgumentParser._infer_relations` for
+    deterministic support/attack/qualifies edges. On unexpected failure
+    the notes tuple includes `"no_relations_extracted"`.
+- `core/parser.py`: added public `parse_transcript(transcript)` wrapper
+  that delegates to `compile_transcript`. Existing `ArgumentParser` API
+  is unchanged.
+- `tests/fixtures/transcripts/happy_path.json`: 10 alternating turns,
+  founder confidences >= 0.85, one repeated sentence for the dedup test.
+- `tests/fixtures/transcripts/low_quality.json`: several founder turns
+  with `confidence < 0.5` plus one high-confidence turn.
+- `tests/test_transcript_compiler.py` (7 tests): propositions with
+  provenance, exact-once dedup, drop path with valid output, non-founder
+  exclusion, parser-wrapper delegation, empty transcript, and a
+  round-trip into `CoherenceScorer.score(...)` asserting no exceptions.
+
+No new runtime dependencies. The compiler is deterministic and
+lexical-only — no torch, transformers, NLP libraries, or ML.
+
+Verify with:
+  python3 -m pytest tests/test_transcript_compiler.py -v
+  python3 -m pytest tests/ --deselect tests/test_scorer.py::TestContradictoryText::test_contradictory_pitch -q
+  python3 -c "from coherence_engine.core.transcript_compiler import compile_transcript; print('ok')"
+
+
+RECENT CHANGES — 2026-04-16 (Wave 2, prompt 05/20)
+--------------------------------------------------
+
+Deterministic ontology entity + relation extractor landed. This provides
+Stage 4 ("Ideological Ontology and Domain Reconstruction") with the
+structural input the hybrid domain step (prompt 06) will consume. The
+extractor is lexical and POS-free — no ML, no NLP library.
+
+- `core/types.py`: added frozen `Entity` (id, type, surface_forms,
+  mentions), `OntologyEdge` (src, dst, relation, evidence_count), and
+  `OntologyGraph` (entities, edges, schema_version). Existing dataclasses
+  are untouched.
+- `server/fund/data/ontology_lexicon.json` (NEW): actor_markers,
+  causal_markers, metric_markers, competition_markers, plus the
+  dependency/part/measurement/object marker lists and founder_forms used
+  by the extractor.
+- `domain/ontology.py` (NEW):
+  - `extract_ontology(propositions) -> OntologyGraph`. Empty input →
+    empty graph with `schema_version="ontology-v1"`.
+  - Entity detection uses word-boundary substring search with longest-
+    match non-overlap resolution (so "our team" beats "team").
+  - Entity IDs: `sha256("{type}|{canonical}")[:16]`.
+  - Surface forms are deduped case-insensitively; `mentions` is a raw
+    occurrence count across all propositions.
+  - Relation extraction walks each sentence: for every marker span it
+    takes the nearest entity on the left and on the right and emits an
+    edge (`causes` for causal markers, `depends_on` for dependency
+    markers, `part_of` for part markers, `measures` for measurement
+    markers). Every causal marker occurrence also registers a
+    `causal_event` entity whose `mentions` doubles as the reason_count.
+    Ambiguous causal markers (no entity on one or both sides) still
+    register the event entity but do NOT emit an edge.
+  - Competition handling: for each competition marker, prefer linking a
+    founder actor to a non-founder actor with `competes_with`; if none
+    of that pairing is available, link the two actor entities nearest to
+    the marker span.
+  - Output is fully deterministic: entities sorted by (type, id); edges
+    sorted by (src, dst, relation); surface_forms sorted
+    lexicographically by lowercase key.
+- `domain/__init__.py`: re-exports `extract_ontology` and
+  `OntologyGraph`.
+- `tests/fixtures/ontology/sample_propositions.json` (NEW): 12-
+  proposition fixture exercising every entity type (actor, metric,
+  object, causal_event) and every relation type (causes, depends_on,
+  part_of, measures, competes_with).
+- `tests/test_ontology_extractor.py` (13 tests): empty input, byte-
+  identical determinism via `json.dumps(..., sort_keys=True)`, at least
+  one `causes` edge on fixture, every entity type exercised, every
+  relation type exercised, stable sha256-prefix IDs, case-insensitive
+  surface-form dedup, founder→named-competitor preference, ambiguous-
+  marker causal_event without edge, package re-export identity,
+  evidence_count aggregation across propositions, frozen dataclass
+  instances, and a source-level check that spacy/nltk/transformers/
+  torch/sklearn are not imported by `domain/ontology.py`.
+
+No new runtime dependencies. `domain/comparator.py` is untouched (owned
+by prompt 06).
+
+Verify with:
+  python3 -m pytest tests/test_ontology_extractor.py -v
+  python3 -m pytest tests/ --deselect tests/test_scorer.py::TestContradictoryText::test_contradictory_pitch -q
+  python3 -c "from coherence_engine.domain.ontology import extract_ontology; print('ok')"
+
+
+--------------------------------------------------------------------------------
+MOST RECENT PROMPT — 2026-04-17 (Wave 6, prompt 20/20)
+--------------------------------------------------------------------------------
+
+Release readiness checklist + full docs sync landed. The 20-prompt
+Wave 1–6 automated pre-seed pipeline program is now behind a single
+deterministic, network-free gate. No new features, no new services,
+no new migrations — this prompt exclusively hardens the seam between
+"code written" and "release approved" and closes the prompt 01–20
+documentation loop.
+
+- `deploy/scripts/release_readiness_check.py` (NEW):
+  Loose Python script (``argparse`` CLI, no external deps beyond the
+  standard library + existing in-repo imports). It prepends the
+  repository parent onto ``sys.path`` in the same way that
+  ``deploy/scripts/merge_governed_historical_outcomes.py`` does so
+  it can be executed directly without requiring a package install.
+  Runs ten checks from a stable ``CHECKS`` tuple and each check
+  returns a ``CheckResult`` dataclass with a ``check_id``, a
+  ``status`` (``pass`` / ``fail`` / ``error``), a ``reason_code``
+  drawn from a closed vocabulary, a human-readable ``detail``, and
+  an ``evidence`` mapping. The checks are:
+    * ``alembic_head_present`` — reads the Alembic tree via
+      ``alembic.config.Config`` + ``ScriptDirectory`` and asserts
+      exactly one head plus a matching ``alembic/versions/*.py``.
+    * ``decision_policy_version_pinned`` — imports
+      ``server/fund/services/decision_policy.py`` and asserts
+      ``DECISION_POLICY_VERSION == "decision-policy-v1"``
+      (prompt 01).
+    * ``event_schemas_load_and_validate`` — iterates
+      ``SUPPORTED_EVENTS``, loads each JSON Schema via
+      ``event_schemas.load_schema``, pulls the first
+      ``examples[]`` payload, and runs ``validate_event`` against
+      it so a schema regression or a missing canonical example is
+      caught before merge (prompt 02).
+    * ``prompt_registry_verifies`` — ``load_registry`` +
+      ``verify_registry`` on the SHA-pinned
+      ``data/prompts/registry.json`` catalog from prompt 08.
+    * ``e2e_integration_test_marked`` — confirms
+      ``tests/integration/test_e2e_pipeline.py`` exists
+      (prompt 16) and contains a ``pytest.mark.e2e`` marker.
+    * ``backtest_spec_present`` — confirms
+      ``docs/specs/backtest_spec.md`` (prompt 11).
+    * ``red_team_matrix_present`` — confirms
+      ``tests/adversarial/labels.json`` (prompt 13) is a JSON list
+      where every row has an ``expected_verdict`` field.
+    * ``admin_dashboard_router_registered`` — imports
+      ``server/fund/routers/admin_ui.py`` (prompt 19), asserts its
+      router prefix is ``/admin``, and statically confirms that
+      ``server/fund/app.py`` both imports and mounts
+      ``admin_ui_router``.
+    * ``status_doc_prompt_recap`` /
+      ``continuation_doc_prompt_recap`` — scan
+      ``COHERENCE_ENGINE_PROJECT_STATUS.txt`` and this file for a
+      textual reference to every prompt 01 through 20 so the two
+      tracking documents cannot silently drift out of sync with
+      the prompt ledger.
+  Exit-code contract:
+    * ``0`` — every check passed;
+    * ``1`` — at least one soft failure (missing file, missing
+      recap line, missing marker) but no loader / fixture
+      exceptions;
+    * ``2`` — a check itself raised before it could reach a
+      verdict (a ``from`` import failure, corrupt JSON, Alembic
+      config absent, etc).
+  The JSON report is byte-stable — keys are sorted, the registry
+  is a tuple, and timestamps are excluded from the body — so
+  ``diff`` between two runs on an unchanged tree is empty. A
+  Markdown summary is emitted alongside the JSON.
+
+- `Makefile` (MODIFY):
+  Added the ``release-readiness`` target. It invokes the script
+  with ``PYTHONPATH=$(REPO_PARENT)`` (to match how the fund app
+  runs elsewhere in this Makefile) and writes outputs to
+  ``artifacts/release-readiness.json`` and
+  ``artifacts/release-readiness.md``. Pre-existing targets are
+  untouched.
+
+- `docs/ops/release_readiness.md` (NEW):
+  Runbook covering quick invocation, the exit-code contract, the
+  JSON + Markdown report shape, and a per-check failure-mode
+  table (each ``check_id`` → ``reason_code`` → operator remedy).
+
+- `tests/test_release_readiness_check.py` (NEW):
+  Loads the script as a module via ``importlib.util`` (the script
+  is deliberately not a package member; this mirrors existing
+  tests for other ``deploy/scripts/`` entries). Covers:
+    * happy path — ``main()`` exits ``0`` on the current tree
+      and every check reports ``pass``;
+    * report structure — rows follow the ``CHECKS`` tuple order,
+      all ``check_id`` values are unique + non-empty, and the
+      Markdown summary mentions every ``check_id``;
+    * byte-stability — two back-to-back runs produce identical
+      JSON;
+    * ``_canonical_json`` helper uses ``sort_keys=True, indent=2``;
+    * three forced-failure scenarios that ``shutil.move`` a
+      required file aside within a ``try/finally`` block, assert
+      ``exit_code == 1`` plus the specific ``reason_code``
+      (``red_team_matrix_missing``, ``backtest_spec_missing``,
+      ``e2e_test_missing``), and restore the file regardless of
+      assertion outcome;
+    * a subprocess test that runs the script end-to-end via
+      ``python3 deploy/scripts/release_readiness_check.py`` to
+      prove the CLI entrypoint used by the Make target stays
+      wired up.
+
+- `COHERENCE_ENGINE_PROJECT_STATUS.txt` (MODIFY):
+  ``Last Updated`` bumped to the prompt-20 milestone. A new
+  top-level ``AUTOMATED PRE-SEED PIPELINE COMPLETION (prompts
+  01–20)`` block lists every prompt alongside its canonical
+  file(s) (verified on disk). A new ``RECENT CHANGES — 2026-04-17
+  (Wave 6, prompt 20/20)`` block documents this prompt. The
+  prompt-19 ``RECENT CHANGES`` entry is preserved directly below
+  it so chronological history is intact.
+
+- `COHERENCE_ENGINE_CONTINUATION_PROMPT.txt` (MODIFY):
+  New top-level ``AUTOMATED PRE-SEED PIPELINE COMPLETION (prompts
+  01–20)`` block mirroring the STATUS doc. Prompt 20 becomes the
+  new ``MOST RECENT PROMPT``; prompt 19 is demoted to
+  ``PREVIOUS PROMPT``; prompt 18 drops one slot into
+  ``PREVIOUS PROMPT (PRIOR)``; older prompt blocks keep their
+  existing labels.
+
+- `docs/IMPLEMENTATION_ROADMAP_AND_BACKLOG.md` (MODIFY):
+  Items whose artifacts are materially on disk are marked
+  ``[DONE prompt NN]`` with the prompt that landed them. Items
+  whose artifacts are not verifiable against code are left
+  unchanged.
+
+Verification
+  * ``python3 -m pytest tests/test_release_readiness_check.py -v``
+    → happy path + forced-failure scenarios all green.
+  * ``python3 deploy/scripts/release_readiness_check.py
+      --json-out artifacts/release-readiness.json
+      --markdown-out artifacts/release-readiness.md``
+    → exit ``0``; JSON report lists all ten ``check_id`` values
+    with ``status: pass``.
+  * ``make release-readiness`` → exit ``0`` (same JSON + MD
+    artifacts, same byte content as the direct invocation).
+
+Prohibitions honored
+  * No new features, routes, event schemas, migrations, or
+    provider integrations.
+  * No network calls (no HTTP, no database open, no subprocess
+    to ``pytest`` or ``alembic``; ``alembic`` is imported
+    in-process and the script reads its config + migration tree
+    from disk).
+  * Does not mark uncompleted roadmap items as ``[DONE]``.
+  * No edits outside SCOPE.
+
+
+--------------------------------------------------------------------------------
+PREVIOUS PROMPT — 2026-04-17 (Wave 5, prompt 19/20)
+--------------------------------------------------------------------------------
+
+Read-only admin dashboard (HTMX) shipped. FastAPI now exposes a
+minimal, role-gated operator UI at ``/admin`` that renders a
+paginated applications list and, on the per-application detail
+page, three HTMX-loaded fragments (scoring / workflow / notifications).
+The surface is strictly read-only, ships a vendored in-tree copy of
+HTMX v1.9.12 (no CDN reference), and introduces no JS framework.
+
+- `server/fund/routers/admin_ui.py` (NEW):
+  ``APIRouter(prefix="/admin", tags=["admin-ui"])`` with five GET
+  endpoints:
+    * ``/admin/applications`` — full HTML page, paginated via
+      ``?page=`` + ``?page_size=`` (1..100). Each row links to the
+      detail view; the pagination anchors carry ``hx-get`` /
+      ``hx-target`` / ``hx-swap`` attributes so HTMX swaps pages
+      client-side but non-JS clients still work via plain ``href``.
+    * ``/admin/applications/{application_id}`` — detail page. Three
+      placeholder ``<div>``s carry
+      ``hx-get="{{ admin_base }}/applications/{{ id }}/fragment/*"``
+      and ``hx-trigger="load"``, so the operator sees data as soon
+      as HTMX executes.
+    * ``/admin/applications/{id}/fragment/scores`` — returns
+      ``text/html`` with a stable ``id="scores-fragment"``
+      wrapper; surfaces the latest decision artifact plus a table
+      of scoring jobs.
+    * ``/admin/applications/{id}/fragment/workflow`` —
+      ``id="workflow-fragment"``; one nested panel per
+      ``WorkflowRun`` with a per-step checkpoint table.
+    * ``/admin/applications/{id}/fragment/notifications`` —
+      ``id="notifications-fragment"``; one row per
+      ``NotificationLog`` entry.
+  Auth: local ``_attach_principal`` helper mirrors
+  ``routers/workflow.py`` (prompt 17) because the production
+  ``FundSecurityMiddleware`` does not match the
+  ``/admin/applications`` prefix; every route then short-circuits
+  via ``_require_admin`` which returns :class:`HTMLResponse` 401
+  (missing / invalid token) or 403 (role != admin). No write paths.
+
+- `server/fund/templates/admin/base.html` (NEW):
+  Page shell with DOCTYPE, ``<html>`` tag, ``noindex, nofollow``
+  robots meta, shared nav, and local ``<link>``/``<script>`` tags
+  pointing at ``/admin/static/admin.css`` and
+  ``/admin/static/htmx.min.js``. No CDN URLs.
+
+- `server/fund/templates/admin/applications.html` (NEW):
+  ``<table id="applications-table">`` with one row per seed
+  application (id, founder, company, one-liner, domain, status +
+  mode + decision badges, created_at). HTMX pagination wiring on
+  the panel itself.
+
+- `server/fund/templates/admin/application_detail.html` (NEW):
+  Main block renders a ``<dl class="kv-grid">`` summary and three
+  fragment-host panels. The fragment HTML is defined inside the
+  same file as named ``{% block fragment_* %}`` sections and
+  rendered on demand by the router using
+  ``Jinja2Templates.get_template(...).blocks[name](ctx)``, so the
+  prompt-19 SCOPE (three templates) is honoured exactly.
+
+- `server/fund/static/admin/htmx.min.js` (NEW):
+  Vendored HTMX v1.9.12 (~47 KB). Multi-line banner comment cites
+  the upstream permissive license (BSD-family, MIT-compatible) and
+  carries the MIT attribution marker. Fetched from
+  ``https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js`` at
+  vendor time; served from the in-tree mount at runtime.
+
+- `server/fund/static/admin/admin.css` (NEW):
+  Layout + table + badge + kv-grid styling. No button-action or
+  form styling — the dashboard is read-only.
+
+- `server/fund/app.py` (MODIFY):
+  ``create_app()`` now registers the admin-UI router and, when the
+  static directory exists, mounts ``/admin/static`` on
+  ``StaticFiles(directory=server/fund/static/admin)``. Existing
+  routers / middleware / secret-manager startup hooks are
+  unchanged.
+
+- `tests/test_admin_dashboard.py` (NEW, 18 tests):
+  Fixture provisions three API-key roles and a complete seed graph
+  (founder → application → scoring job → decision → workflow run
+  + step → notification log) then exposes a ``TestClient``.
+  Coverage:
+    * auth contract (401 without a token, 403 for viewer / analyst,
+      200 for admin) on the list view, detail view, and every
+      fragment endpoint;
+    * list-view body has ``<!DOCTYPE html>``, the applications
+      table, the seed ``data-app-id`` row, and a reference to
+      ``/admin/static/htmx.min.js`` without any ``unpkg.com`` /
+      ``cdnjs`` substring;
+    * detail view renders all three ``hx-get`` fragment hooks;
+    * each fragment returns ``text/html`` with the expected
+      ``id="*-fragment"`` wrapper and the seeded row;
+    * static assets (``htmx.min.js``, ``admin.css``) served
+      locally;
+    * router wiring — ``router.prefix == "/admin"`` and
+      ``create_app()`` registers every admin-UI path.
+
+- `COHERENCE_ENGINE_PROJECT_STATUS.txt` (MODIFY) and
+  `COHERENCE_ENGINE_CONTINUATION_PROMPT.txt` (MODIFY):
+  Last-Updated header bumped to the prompt-19 milestone. The
+  prompt-19 summary is inserted as ``MOST RECENT PROMPT`` / ``RECENT
+  CHANGES``; prompt-18 is demoted to ``PREVIOUS PROMPT`` /
+  chronological ``RECENT CHANGES`` slot. Older entries retain their
+  previous ``PREVIOUS PROMPT (PRIOR)`` / ``RECENT CHANGES`` labels.
+
+Verification
+  * ``python3 -m pytest tests/test_admin_dashboard.py -v``
+    → 18 passed in ~2 s.
+  * ``python3 -m pytest tests/ -q`` (full suite)
+    → 706 passed / 3 skipped. The only failures are the five
+    pre-existing full-suite flakes already documented for prompt
+    18 (two ``tests/test_worker_ops_telemetry.py::*`` snapshot
+    tests plus three ``tests/test_cli.py::TestAnalyzeCommand::*``
+    subprocess tests); every one of them passes cleanly in
+    isolation and in admin-dashboard-adjacent subsets, matching
+    the pre-prompt-19 baseline.
+  * Prompt-19 verification markers recomputed via the same
+    regex contract enforced by ``check_prompt_state.py``; all
+    seven post-conditions match.
+
+Prohibitions honored
+  * No writes or state-mutating buttons (every admin-UI route is a
+    GET; no forms, no POSTs, no state mutations anywhere in the
+    router or templates).
+  * No CDN reference (HTMX is served from
+    ``/admin/static/htmx.min.js``; ``unpkg.com`` / ``cdnjs``
+    substrings are absent from every committed file).
+  * No React / Vue / Svelte.
+  * No edits outside SCOPE — existing
+    ``server/fund/security.py`` is untouched; the router performs
+    its own local principal attachment + role gating.
+
+
+--------------------------------------------------------------------------------
+PREVIOUS PROMPT (PRIOR) — 2026-04-17 (Wave 5, prompt 18/20)
+--------------------------------------------------------------------------------
+
+Observability + SLO coverage for the prompt-15 workflow orchestrator
+landed. Each stage now emits a structured telemetry event carrying
+latency, outcome, and warn tagging; an SLO catalog and two
+Prometheus rule stubs (helm + raw kubectl) ship additively and are
+gated behind existing operator-managed toggles so production behavior
+is unchanged until deliberately enabled.
+
+- `server/fund/services/ops_telemetry.py` (MODIFY):
+  Added ``record_stage(name, duration_s, status, extra=None, *,
+  logger=None)`` plus two test-only helpers
+  (``reset_pipeline_stage_counters``,
+  ``get_pipeline_stage_counters_snapshot``). Each ``record_stage``
+  call:
+    * normalises status to ``success | failure | skipped``,
+    * clamps negative / NaN durations to ``0`` (raw value preserved
+      under ``duration_s_raw`` for operator diagnosis),
+    * updates in-process counters used by the Prometheus textfile
+      sink,
+    * emits one structured log line
+      (``COHERENCE_FUND_PIPELINE_STAGE_EVENT`` marker; WARNING on
+      failure or warn-tag breach, INFO otherwise),
+    * appends one JSONL line when
+      ``COHERENCE_FUND_PIPELINE_TELEMETRY_FILE_PATH`` is set,
+    * atomically overwrites the Prometheus textfile at
+      ``COHERENCE_FUND_PIPELINE_TELEMETRY_PROMETHEUS_TEXTFILE_PATH``
+      with four metric families under the
+      ``coherence_fund_pipeline_*`` namespace.
+  Duration warn-threshold via
+  ``COHERENCE_FUND_PIPELINE_STAGE_DURATION_WARN_SECONDS``
+  (default ``0`` = disabled) appends ``warn=duration_budget`` and
+  bumps ``stage_warn_total``. Worker-ops snapshot semantics
+  (``emit_worker_ops_snapshot``, ``prometheus_text_from_payload``,
+  alert routing) are unchanged (prompt 18 prohibition).
+
+- `server/fund/services/workflow.py` (MODIFY):
+  New ``stopwatch()`` context manager built on ``time.monotonic()``.
+  Every entry in the ``STEPS`` loop now runs inside
+  ``with stopwatch() as elapsed:``; success path emits
+  ``record_stage(name, elapsed(), "success", extra=...)`` carrying
+  ``application_id``, ``workflow_run_id``, ``workflow_step_id``, and
+  ``trace_id``. Exception path records
+  ``status="failure"`` with the exception class name in
+  ``extra.error_type`` **before** re-raising so the telemetry surface
+  never under-counts failure runs. Stage execution order, digest
+  computation, checkpoint writes, and resume semantics are unchanged.
+
+- `docs/ops/slo_metrics.md` (NEW):
+  Pipeline-stage SLO catalog. Publishes the canonical stage
+  identifier table — ``intake``, ``transcript_quality``,
+  ``compile`` (alias ``transcript_compile``), ``ontology`` (alias
+  ``ontology_extract``), ``domain_mix``, ``score``, ``decide``,
+  ``artifact`` (alias ``decision_artifact``), ``notify`` (alias
+  ``notification_dispatch``) — with P50/P95 latency targets and a
+  15-minute error-rate budget per stage, plus an end-to-end success
+  budget of >= 99.5 % over 15 minutes. Signal-source catalog
+  documents the log marker, JSONL sink, and Prometheus textfile.
+  Env-var reference lists safe defaults (all sinks disabled) and
+  production starting points. Additive to
+  ``slo_threshold_standards.md`` — scoring/outbox SLOs unchanged.
+
+- `deploy/helm/templates/prometheus-rules-pipeline.yaml` (NEW):
+  ``PrometheusRule`` stub gated by
+  ``.Values.prometheusRules.enabled`` (same toggle the existing
+  worker-slo chart file uses). Two recording rules
+  (``coherence_fund:pipeline_stage_failure_ratio:15m`` +
+  ``coherence_fund:pipeline_stage_success_rate:15m``) and three
+  alerts (``CoherenceFundPipelineStageFailureRateHigh``,
+  ``CoherenceFundPipelineStageDurationBudgetBurn``,
+  ``CoherenceFundPipelineStageSilent``). Lives at
+  ``deploy/helm/templates/...`` per the prompt 18 scope; the header
+  comment explains that operators copy or symlink it into the active
+  chart at ``deploy/helm/coherence-fund/templates/`` when enabling.
+  The active chart is untouched.
+
+- `deploy/k8s/prometheus/rules-pipeline.yaml` (NEW):
+  Raw ``PrometheusRule`` manifest for kubectl-apply deployments.
+  Same rules as the helm stub; not wired into any kustomization so
+  it stays opt-in.
+
+- `tests/test_pipeline_telemetry.py` (NEW):
+  14 tests. Unit contract of ``record_stage`` (payload shape, status
+  normalisation, negative-duration clamp, counter updates, warn-tag
+  emission, JSONL append, Prometheus textfile write, WARNING log
+  level on failure). Workflow integration: happy path emits exactly
+  one ``status=success`` event per declared stage; forced failure at
+  ``ontology`` (via ``monkeypatch`` on ``workflow.STEPS``) emits
+  ``success`` for preceding stages and exactly one ``failure`` for
+  the failing stage, with zero events for downstream stages. JSONL
+  sink captures one line per stage per run; forced-failure variant
+  includes ``error_type`` in ``extra``. Module-surface contract:
+  ``ops_telemetry.record_stage`` is exported and ``workflow.py``
+  imports it at module scope.
+
+- `COHERENCE_ENGINE_PROJECT_STATUS.txt` (MODIFY):
+  New ``RECENT CHANGES — 2026-04-17 (Wave 5, prompt 18/20)`` block;
+  Last Updated header bumped.
+
+- `COHERENCE_ENGINE_CONTINUATION_PROMPT.txt` (this file) (MODIFY):
+  This prompt-18 block added; prompt 17 demoted to ``PREVIOUS
+  PROMPT``; prior ``PREVIOUS PROMPT`` entries shifted down one slot.
+
+Verification:
+  * ``python3 -m pytest tests/test_pipeline_telemetry.py -v`` — 14
+    passed.
+  * ``python3 -m pytest tests/ -q`` — 691 passed, 3 skipped. The
+    only failures seen when running the full suite are two
+    pre-existing flakes in ``tests/test_worker_ops_telemetry.py``
+    (``test_emit_outbox_ops_snapshot_warn_tags``,
+    ``test_scoring_ops_metrics_and_snapshot``); both pass in
+    isolation (``python3 -m pytest tests/test_worker_ops_telemetry.py``
+    -> 5 passed). No regressions from prompt 18.
+
+Prohibition compliance (prompt 18):
+  * Worker ops telemetry semantics unchanged —
+    ``emit_worker_ops_snapshot``, ``prometheus_text_from_payload``,
+    ``verify_worker_ops_alert_routing`` bodies untouched.
+  * Prometheus rules are not enabled by default — helm stub gated
+    by ``.Values.prometheusRules.enabled`` (unchanged default:
+    ``false``); k8s stub is not wired into any kustomization.
+  * No APM SDK introduced (no OpenTelemetry / DataDog / etc. added
+    anywhere in the import graph).
+  * No edits outside SCOPE. Notably, ``server/fund/app.py``,
+    ``server/fund/services/alert_routing.py``, and the existing
+    ``deploy/helm/coherence-fund/templates/prometheus-rules.yaml``
+    are untouched.
+
+
+--------------------------------------------------------------------------------
+PREVIOUS PROMPT (PRIOR) — 2026-04-17 (Wave 4, prompt 17/20)
+--------------------------------------------------------------------------------
+
+OpenAPI refresh + deterministic typed SDK stub generator landed. The
+spec now describes every surface added in prompts 12, 14, 15, and 16
+that was previously undocumented, and a stdlib-only Python client is
+committed alongside a generator whose output is byte-reproducible for
+a given YAML (regression-guarded in tests).
+
+- `docs/specs/openapi_v1.yaml` (MODIFY):
+  Five new ``/api/v1`` operations, each carrying the same
+  ``x-required-roles`` convention as the existing routes:
+    * GET  /applications/{id}/decision_artifact    (viewer|analyst|admin)
+    * POST /applications/{id}/mode                 (admin)
+        body: {mode: "enforce"|"shadow", force: bool}
+    * POST /workflow/{application_id}/run          (analyst|admin)
+    * POST /workflow/{application_id}/resume       (analyst|admin)
+        body: {force: bool}
+    * GET  /notifications?application_id=&limit=&offset=
+                                                    (viewer|analyst|admin)
+  Added matching schemas: GetDecisionArtifactResponse,
+  SetScoringModeRequest/Response, ResumeWorkflowRequest,
+  WorkflowStepRecord + WorkflowRunResponse, NotificationLogEntry +
+  ListNotificationsResponse. No existing paths, operationIds, or
+  role annotations were altered.
+
+- `server/fund/routers/workflow.py` (NEW):
+  Thin FastAPI router for the three new non-``/applications``
+  surfaces. All handlers delegate to existing services — no
+  business logic. Because the out-of-scope
+  ``FundSecurityMiddleware._is_fund_path`` only recognises the
+  ``/applications`` and ``/admin/api-keys`` prefixes, this router
+  attaches ``request.state.principal`` itself via the same
+  ``ApiKeyRepository`` + ``ApiKeyService.verify_token`` flow the
+  middleware uses. Error mapping:
+    * WorkflowResumeRefused -> 409 CONFLICT (with the failed
+      digest in ``details``).
+    * WorkflowError         -> 422 UNPROCESSABLE_STATE.
+    * Any other stage exception -> 500 WORKFLOW_STAGE_FAILED with
+      the failed ``WorkflowRun`` + ``WorkflowStep`` rows
+      committed so operators can read them back.
+  ``/notifications`` pages ``NotificationLog`` entries via
+  ``offset`` + ``limit`` query params.
+
+- `server/fund/routers/applications.py` (MODIFY):
+  Added two new handlers without touching any existing handler
+  body:
+    * ``GET /applications/{id}/decision_artifact`` returns the
+      most-recent ``ArgumentArtifact`` row with
+      ``kind=ARTIFACT_KIND`` as the canonical payload plus
+      artifact_id / decision_policy_version / created_at.
+      Emits 404 on missing, 500 on corrupt JSON.
+    * ``POST /applications/{id}/mode`` delegates to
+      ``ApplicationService.set_scoring_mode`` so the prompt-12
+      guardrail refusing ``enforce -> shadow`` after a decision
+      is issued stays the single source of truth. Emits 422 on
+      invalid mode or unforced regression, 404 on missing app.
+
+- `scripts/generate_sdk_stubs.py` (NEW):
+  Walks ``paths[path][method]`` for get/post/put/patch/delete,
+  sorts operations by ``(operationId, path, method)``, then
+  emits a typed Python client. Runtime deps: PyYAML (already in
+  the tree) + stdlib only. Key deterministic design choices:
+    * Canonical spec label (``docs/specs/openapi_v1.yaml``)
+      embedded in the emitted header regardless of caller's
+      invocation cwd (pytest tmp dirs vs CLI).
+    * SHA-256 of the raw YAML bytes printed in the header +
+      stdout for quick drift diagnosis.
+    * ``--check`` flag returns non-zero on drift (CI-ready).
+  Method naming: ``<tag>_<operationId_snake>`` where ``tag``
+  falls back to the first literal path segment when
+  ``operation.tags`` is absent (current state of the YAML).
+
+- `sdk/python/coherence_fund_client/__init__.py` (NEW)
+  `sdk/python/coherence_fund_client/client.py` (NEW, generated):
+  ``CoherenceFundClient`` — stdlib-only (``urllib.request``) HTTP
+  client with ``base_url``, ``api_key``, ``bearer_token``,
+  ``timeout`` kwargs. Returns the parsed JSON envelope; raises
+  ``CoherenceFundClientError(status, body)`` on non-2xx. Covers
+  every OpenAPI operation, including the new ones:
+    * applications_get_decision_artifact
+    * applications_set_scoring_mode
+    * workflow_run_workflow
+    * workflow_resume_workflow
+    * notifications_list_notifications
+  The committed ``client.py`` is the authoritative artifact for
+  consumers; re-generation is locked by the drift-check test.
+
+- `tests/test_openapi_and_sdk.py` (NEW — 17 tests, all passing):
+  * YAML parses; each new (path, method, operationId) triple is
+    present and carries ``x-required-roles``.
+  * Regenerating the client in pytest tmp dir produces bytes
+    identical to the committed ``client.py``.
+  * ``generate_sdk_stubs.run(..., check=True)`` returns 0 on the
+    committed file and non-zero when pointed at a placeholder
+    (positive + negative drift coverage).
+  * Import-level sanity confirms new method names exist on
+    ``CoherenceFundClient``.
+  * FastAPI ``TestClient`` happy paths for each new endpoint,
+    including role-gating negatives (viewer denied on mode
+    toggle; viewer denied on workflow run/resume). The workflow
+    router is mounted inside the fixture via
+    ``app.include_router(workflow_router, prefix="/api/v1")``
+    because editing ``server/fund/app.py`` was out of scope.
+
+- VERIFY
+  * ``python3 scripts/generate_sdk_stubs.py --check`` -> exit 0.
+  * ``python3 -m pytest tests/test_openapi_and_sdk.py`` -> 17 passed.
+  * Full suite: 675 passed / 3 skipped. The only failures are the
+    same pre-existing flakes in ``test_worker_ops_telemetry`` +
+    ``test_notifications`` that pass in isolation (documented
+    across prompts 13-16). No regressions from prompt 17.
+
+PROHIBITION COMPLIANCE (prompt 17)
+  * No heavy generator (openapi-python-client etc.) pulled in;
+    stdlib + PyYAML only.
+  * No existing role annotation or endpoint path altered.
+  * All edits inside declared SCOPE. ``server/fund/app.py`` was
+    NOT modified (out of scope); the workflow router is mounted
+    by tests via ``app.include_router(...)`` and is expected to
+    be wired into ``create_app()`` in a subsequent prompt.
+
+
+--------------------------------------------------------------------------------
+PREVIOUS PROMPT (PRIOR) — 2026-04-17 (Wave 5, prompt 16/20)
+--------------------------------------------------------------------------------
+
+End-to-end reproducibility integration test landed. A single offline
+``@pytest.mark.e2e`` test drives a synthetic founder application
+through every pipeline stage via the workflow orchestrator (prompt 15)
+and asserts (a) every WorkflowStep row lands in ``succeeded``, (b)
+exactly one ``decision_artifact`` row with the pinned
+``decision_policy_version == "decision-policy-v1"``, (c) the
+``DecisionIssued`` outbox payload validates against
+``decision_issued.v1.json``, and (d) running the same inputs against a
+second fresh application yields canonically-serialized artifact bytes
+that equal run 1's after stripping only the fields that legitimately
+vary per run (UUIDs / timestamps / id-dependent digests).
+
+- `tests/integration/fixtures/e2e_application.json` (NEW):
+  Synthetic founder + application (Reproducible Labs, $150,000 ask,
+  domain=market_economics, scoring_mode=enforce).
+
+- `tests/integration/fixtures/e2e_transcript.json` (NEW):
+  ~1.5k-word pitch transcript crafted to (1) pass the transcript-
+  quality gate, (2) carry explicit causal markers ('because',
+  'therefore', 'so that') so ontology emits non-trivial relations,
+  and (3) span three domains so DomainMix is non-degenerate.
+
+- `tests/integration/conftest.py` (NEW):
+  * `reset_fund_schema` — drop_all + create_all against the fund
+    engine (throwaway schema per test; production DB never touched).
+  * `e2e_app_factory(suffix, app_id_override, founder_id_override)` —
+    mints a fresh Founder + Application row from the e2e fixtures
+    with a unique application_id per call so the same fixtures can
+    drive multiple runs inside one test.
+
+- `tests/integration/test_e2e_pipeline.py` (NEW):
+  * `@pytest.mark.e2e` — registered in `pyproject.toml`; NOT opt-in.
+  * `test_e2e_pipeline_is_byte_reproducible_and_schema_valid` runs
+    two identical workflows against two fresh applications and
+    exercises all four required assertions.
+  * Reproducibility comparison uses a deep-copied payload stripped
+    of exactly seven paths (`artifact_id`, `application_id`,
+    `session_id`, `occurred_at`, `inputs_digest`,
+    `inputs.application.id`, `inputs.session_id`) — centralised in
+    `_REPRODUCIBILITY_EXCLUDED_PATHS` with a rationale comment per
+    entry so adding a new exclusion is a deliberate act. On diverge
+    the test emits a pretty-printed diff + first-divergent top-level
+    key list so regressions are trivially triageable.
+  * All founder notifications routed through `DryRunBackend` under
+    `tmp_path`; no SMTP / SES / Sendgrid / HTTP calls.
+
+- `pyproject.toml` (MODIFY):
+  * Registered the `e2e` pytest marker so the default offline CI
+    run does not emit `PytestUnknownMarkWarning`.
+
+- TEST SUITE
+  * `tests/integration/test_e2e_pipeline.py`: 1 passed (~0.2s).
+  * Full suite: 659 passed, 3 skipped, 1 deselected, 36 warnings.
+    Only failures are the same two known pre-existing flakes in
+    `tests/test_worker_ops_telemetry.py` that pass in isolation
+    (documented in prompts 13-15).
+
+PROHIBITION COMPLIANCE (prompt 16)
+  * No production DB touched — schema reset only against the fund
+    SQLite engine under test configuration.
+  * No network I/O — notifications routed through `DryRunBackend`.
+  * Byte comparison explicitly excludes only fields that must vary
+    per run; exclusion set documented in module docstring and inline.
+  * No edits outside prompt-declared SCOPE.
+
+
+--------------------------------------------------------------------------------
+PREVIOUS PROMPT (PRIOR) — 2026-04-17 (Wave 4, prompt 15/20)
+--------------------------------------------------------------------------------
+
+Workflow orchestrator skeleton landed. The fund backend now ships a thin,
+in-process, idempotent orchestrator that composes the nine pipeline stages
+(intake -> transcript_quality -> compile -> ontology -> domain_mix -> score
+-> decide -> artifact -> notify) and writes a checkpoint row per stage so
+a failed run can resume at the first non-succeeded step. The orchestrator
+WRAPS (does not replace) existing stage implementations: same
+`ScoringService`, same `DecisionPolicyService`, same `persist_decision_artifact`,
+same notification dispatch, and the same canonical event order
+(`InterviewCompleted -> ArgumentCompiled -> CoherenceScored -> DecisionIssued`).
+
+- `server/fund/services/workflow.py` (NEW):
+  * `STEPS` — ordered 9-tuple of `(name, fn)` pairs:
+    `intake`, `transcript_quality`, `compile`, `ontology`,
+    `domain_mix`, `score`, `decide`, `artifact`, `notify`.
+  * `class WorkflowError(Exception)` — validation / orchestration
+    failures (missing app, unknown step); `class WorkflowResumeRefused`
+    subclass specifically for `input_digest` drift on a succeeded step.
+  * `canonicalize(value)` + `compute_digest(value)` — canonical JSON
+    (sorted dict keys, non-JSON scalars coerced to str) -> SHA-256.
+    Powers both `input_digest` (tamper detection on resume) and
+    `output_digest` (stage-output fingerprint).
+  * `WorkflowContext` dataclass — threads session, application_id,
+    trace_id, idempotency_prefix, notification backend + dry-run dir
+    through the stages; `app`, `score`, `decision_payload`,
+    `canonical_decision`, `session_id`, `transcript_uri` are populated
+    lazily via `_ensure_app` / `_ensure_score` / `_ensure_decision_payload`
+    so a resumed stage can reconstruct upstream state without re-
+    executing any already-succeeded side effects.
+  * `run_workflow(session, application_id, *, resume=False,
+                  force=False, trace_id="", idempotency_prefix="",
+                  scoring_job_id="", notification_backend=None,
+                  notification_dry_run_dir=None) -> WorkflowRun`:
+    - Loads (resume) or creates (fresh) a WorkflowRun row.
+    - For each stage: computes `input_digest` from the stage's
+      declared inputs; if an existing WorkflowStep row is `succeeded`
+      and input_digest matches, skips; if it diverges and `force=False`,
+      raises `WorkflowResumeRefused` with `input_digest_mismatch:<stage>`;
+      else (re)creates the step row in `running`, executes the stage
+      body, computes `output_digest`, marks `succeeded` + finished_at.
+    - On exception inside a stage body: marks the step `failed` with
+      an operator-readable `error` string (no stack traces, no
+      credentials), marks the run `failed` + `finished_at`, and
+      re-raises the original exception unchanged.
+    - Stage side effects are idempotent at the service layer (scoring
+      is deterministic, `upsert_decision` is an UPSERT,
+      `persist_decision_artifact` is digest-keyed, notification
+      dispatch is keyed on `(application_id, template_id)`), so a
+      re-run produces the same persisted state without duplication.
+    - Event publishes use a stable, application-scoped
+      `idempotency_prefix` (default `f"workflow:{application_id}"`)
+      so outbox keys are deterministic across runs.
+
+- `server/fund/models.py` (MODIFY):
+  * `class WorkflowRun(Base)` [`fund_workflow_runs`]: `id` (pk),
+    `application_id` (FK + index), `status` (index),
+    `current_step`, `started_at`, `finished_at`, `error`,
+    `created_at`, `updated_at`.
+  * `class WorkflowStep(Base)` [`fund_workflow_steps`]: `id` (pk),
+    `workflow_run_id` (FK + index), `name` (index), `status` (index),
+    `started_at`, `finished_at`, `input_digest`, `output_digest`,
+    `error`, `created_at`, `updated_at`. Migration enforces a unique
+    composite index on `(workflow_run_id, name)`.
+  * Neither table stores credentials, rendered notification bodies,
+    or any secret-bearing payload.
+
+- `alembic/versions/20260417_000006_workflow_checkpoints.py` (NEW):
+  * Idempotent create of `fund_workflow_runs` + `fund_workflow_steps`
+    with all declared indexes; reversible downgrade drops both tables
+    in dependency order. Bootstrapping via `Base.metadata.create_all`
+    no longer collides with this migration.
+
+- `server/fund/services/application_service.py` (MODIFY):
+  * NEW public method
+    `run_application_workflow(application_id, *, resume=False, force=False,
+    trace_id="", idempotency_prefix="", scoring_job_id="") -> WorkflowRun`
+    that delegates to `workflow.run_workflow` and threads the injected
+    notification backend + dry-run dir through. `process_next_scoring_job`
+    is left unchanged: it remains the scoring-job-claim path with its
+    existing event order, lease / retry machinery, and tests intact.
+
+- `cli.py` (MODIFY):
+  * NEW top-level `workflow` subparser with two subcommands:
+      - `workflow run --application-id <id>`
+      - `workflow resume --application-id <id> [--force]`
+  * `_cmd_workflow`: opens `SessionLocal`, dispatches to `run_workflow`,
+    commits the checkpoint trail, and exits 0 on `succeeded`, 1 on stage
+    failure, 2 on `WorkflowError` validation failure (missing app), 3 on
+    `WorkflowResumeRefused` (digest drift without `--force`). Prints a
+    JSON summary of the final run state on stdout.
+
+- `tests/test_workflow_orchestrator.py` (NEW, 17 tests, all passing):
+  * Static invariants (STEPS order, nine stages, digest stability).
+  * Happy path produces one WorkflowRun + nine WorkflowStep rows all
+    `succeeded`; canonical events emitted in required order; Decision
+    row written; notification dispatched; shadow-mode skips dispatch.
+  * Injected failure in `_stage_ontology` leaves earlier stages
+    `succeeded`, ontology `failed`, later stages absent; resume uses
+    the SAME WorkflowRun row and completes the run.
+  * Resume with all succeeded is a fast-forward no-op (zero new rows).
+  * Tampered upstream input (mutated `transcript_text` between runs)
+    makes `resume=True` raise `WorkflowResumeRefused` with
+    `input_digest_mismatch:<stage>`; `force=True` bypasses.
+  * ApplicationService.run_application_workflow integration.
+  * CLI smoke: `python -m coherence_engine workflow --help` works.
+
+- TEST SUITE
+  * `tests/test_workflow_orchestrator.py`: 17 passed.
+  * `alembic upgrade head`: 20260417_000005 -> 20260417_000006 cleanly.
+  * Full suite: 658 passed, 3 skipped, 1 deselected, 36 warnings. The
+    only two failures (`test_worker_ops_telemetry.py::test_emit_outbox_ops_snapshot_warn_tags`
+    + `...::test_scoring_ops_metrics_and_snapshot`) are the same known
+    pre-existing flakes documented in prior prompts; both telemetry
+    tests pass in isolation.
+
+PROHIBITION COMPLIANCE (prompt 15)
+  * No Celery / Temporal / Prefect / Airflow dependency — in-process
+    synchronous execution only.
+  * No reordering of canonical events — orchestrator emits
+    `InterviewCompleted -> ArgumentCompiled -> CoherenceScored
+    -> DecisionIssued` in the same sequence as `process_next_scoring_job`.
+  * Stage implementations WRAP the existing services; no duplication
+    of scoring, policy, artifact, or notification logic
+    (`_stage_artifact` reuses `ApplicationService._build_artifact_app_state`).
+  * No edits outside the prompt-declared SCOPE.
+
+
+--------------------------------------------------------------------------------
+PREVIOUS PROMPT (PRIOR) — 2026-04-17 (Wave 3, prompt 14/20)
+--------------------------------------------------------------------------------
+
+Notification service (founder + partner) landed. The fund orchestrator
+now ships an idempotent, template-driven notification dispatcher with
+pluggable transport backends, wired into the scoring worker on the
+enforce-mode branch only (shadow-mode decisions still skip all founder
+and partner side effects per prompt 12).
+
+- `server/fund/services/notifications.py` (NEW):
+  * `class NotificationError(Exception)` — operator-readable
+    transport + validation failure.
+  * `compute_idempotency_key(application_id, template_id)` ->
+    `sha256(f"{application_id}|{template_id}").hexdigest()`.
+  * `dispatch(session, application_id, verdict, *, backend,
+    template_id=None, recipient=None, extra_context=None)
+    -> NotificationLog`.
+    - Selects the founder template from
+      `VERDICT_TO_FOUNDER_TEMPLATE` ({pass, reject, manual_review}).
+    - Renders via `str.format_map` using the documented placeholder
+      contract (`founder_name`, `founder_email`, `company_name`,
+      `application_id`, `decision`, `policy_version`,
+      `coherence_observed`, `threshold_required`, `margin`,
+      `failed_gates_summary`). Missing keys are filled with `"-"`.
+    - Extracts the `Subject:` header (if present) from the
+      rendered body and passes it separately to the backend.
+    - Idempotency: if a log row with the same idempotency key
+      exists in `status="sent"`, returns it unchanged (no render,
+      no backend call). `status="failed"` rows retry in place.
+  * Legacy `"fail"` verdict aliased to `"reject"` for consumers
+    that still emit the pre-canonical policy vocabulary.
+
+- `server/fund/services/notification_backends.py` (NEW):
+  * `NotificationBackend` Protocol (`channel` + `send(to, subject,
+    body) -> dict`).
+  * `DryRunBackend` — default backend used in CI and local runs.
+    Writes a single JSON envelope per dispatch under `dry_run_dir`;
+    zero network I/O; never reads or stores credentials.
+  * `SMTPBackend` / `SESBackend` / `SendgridBackend` — env-gated
+    optional backends. Each raises `NotificationBackendConfigError`
+    if its required env vars are missing. Their `send()` methods
+    are exercised in tests only through `unittest.mock` —
+    no real sockets are opened under default CI.
+  * `backend_for_channel("dry_run"|"smtp"|"ses"|"sendgrid")`
+    factory; raises `ValueError` on typos so a wrong channel
+    string fails at the call site instead of silently
+    defaulting.
+
+- `server/fund/data/notification_templates/` (NEW):
+  * `founder_pass.txt`, `founder_reject.txt`,
+    `founder_manual_review.txt`, `partner_escalation.md`.
+    Each uses single-brace `{placeholder}` markers compatible
+    with `str.format_map`.
+
+- `server/fund/models.py` (MOD): added
+  `NotificationLog(fund_notification_log)` with columns
+  `(id, application_id, template_id, channel, recipient,
+  idempotency_key [unique], status, error, created_at, sent_at)`.
+  The table never persists raw credentials or rendered bodies
+  containing sensitive material (prompt 14 prohibition).
+
+- `alembic/versions/20260417_000005_notification_log.py` (NEW):
+  idempotent upgrade that creates `fund_notification_log` plus
+  indexes on `application_id`, `template_id`, `channel`,
+  `status`, and a unique index on `idempotency_key`. Skips
+  creation if the table / index already exists (handles
+  `Base.metadata.create_all` bootstraps).
+
+- `server/fund/services/application_service.py` (MOD):
+  * `ApplicationService.__init__` now accepts optional
+    `notification_backend` and `notification_dry_run_dir`. The
+    default backend is a `DryRunBackend` rooted at
+    `./var/notifications` (relative to cwd) — production
+    callers inject an `SMTPBackend` / `SESBackend` /
+    `SendgridBackend` instead.
+  * After an enforce-mode decision is written,
+    `process_next_scoring_job` invokes the new
+    `_dispatch_enforce_notification` helper which wraps
+    `notifications.dispatch`. Failures are logged via
+    `_LOG_ARTIFACT.warning` but never fail the scoring job —
+    delivery is a downstream best-effort side effect whose
+    retries live in the `NotificationLog` ledger.
+  * Shadow-mode decisions skip dispatch entirely; the pipeline
+    still builds `shadow_decision_artifact` and emits
+    `DecisionIssued` tagged `mode="shadow"`.
+
+- `tests/test_notifications.py` (NEW, 38 tests):
+  * Dry-run backend writes the expected JSON envelope for all
+    three verdicts; body fragments asserted per template.
+  * Second dispatch with the same key returns the same log row
+    unchanged and does NOT invoke the backend a second time.
+  * Verdict mapping is total and bijective over
+    {pass, reject, manual_review}.
+  * `"fail"` alias resolves to `founder_reject`.
+  * SMTP / SES / Sendgrid raise `NotificationBackendConfigError`
+    without env vars; with env vars, their `send()` methods are
+    exercised only through mocked `smtplib` / `boto3` /
+    `urllib.request` — no real sockets.
+  * Backend transport errors persist `status="failed"` with an
+    operator-readable error; a follow-up dispatch retries the
+    same row in place.
+  * `NotificationLog` never contains credentials (column scan).
+  * Application-service defaults to `DryRunBackend`; the helper
+    is idempotent across two calls; the shadow-mode bypass is
+    pinned at the call-site level.
+
+Verification:
+  - `alembic upgrade head` applies `20260417_000005` cleanly.
+  - `tests/test_notifications.py`          -> 38 / 38 passed.
+  - fund-adjacent suite (notifications +
+    shadow_mode + fund_backend + decision_artifact +
+    event_schemas + backtest + anti_gaming +
+    decision_policy_portfolio + red_team_harness)
+                                            -> 161 / 161 passed,
+                                               no regressions.
+
+Prohibitions honored:
+  - No real emails sent from any test.
+  - Raw credentials never persisted into
+    `fund_notification_log` (verified by scanner test).
+  - All edits stayed inside the prompt-14 SCOPE list.
+
+
+--------------------------------------------------------------------------------
+PREVIOUS PROMPT (PRIOR) — 2026-04-17 (Wave 5, prompt 13/20)
+--------------------------------------------------------------------------------
+
+Red-team adversarial harness landed. The fund orchestrator now ships
+a curated, fully-offline regression harness that replays a labeled
+corpus of synthetic founder pitches through the production
+`ScoringService` + `DecisionPolicyService` chain (the same chain used
+by `ApplicationService.process_next_scoring_job`), reports
+per-case results plus false-pass / false-reject / false-review
+counters, pins a 3 x 3 confusion matrix as a CI regression baseline,
+and surfaces drift via a dedicated CLI verb with documented exit
+codes.
+
+- `server/fund/services/red_team.py` (NEW):
+  - `run_adversarial_suite(fixtures_dir, labels_path, policy_version)
+    -> RedTeamReport` orchestrates the replay. Loads + validates
+    fixtures (sorted iteration, deterministic), loads labels,
+    canonicalizes the decision-policy `fail` -> `reject`
+    translation, and aggregates a `RedTeamReport`
+    (`schema_version=red-team-report-v1`) with `total_cases`,
+    `matches`, `mismatches`, `counts`
+    (`false_pass`/`false_reject`/`false_review`), and a 3 x 3
+    `confusion_matrix` keyed by `expected_verdict` ->
+    `actual_verdict`. Per-case records carry CI95, anti-gaming
+    flags, transcript-quality score, failed gate codes,
+    threshold required / coherence observed / margin, and the
+    label rationale.
+  - `to_canonical_bytes()` serializes with `sort_keys=True` and
+    fixed separators so consecutive runs are byte-identical
+    (asserted in tests).
+  - `RedTeamError` carries operator-readable messages for every
+    load/schema failure surface (missing fixtures dir, missing
+    labels, malformed JSON, unknown verdict, unknown category,
+    missing label for a fixture, policy-version pin mismatch).
+- `tests/adversarial/fixtures/*.json` (NEW): 12 fully synthetic
+  fixtures (4 incoherent, 4 coherent + evidenced, 2
+  template-echo, 2 borderline), spanning `market_economics`,
+  `public_health`, and `governance` domains. One incoherent
+  fixture sets `compliance_status="blocked"` to exercise the
+  hard-fail compliance path; one borderline fixture sets
+  `compliance_status="review_required"` to exercise the
+  manual-review compliance path.
+- `tests/adversarial/labels.json` (NEW): maps each fixture
+  filename to `{expected_verdict, rationale}` using the
+  canonical external vocabulary
+  (`pass | reject | manual_review`).
+- `cli.py` (MODIFIED): new top-level `red-team-run --fixtures-dir
+  <dir> --labels <file> [--output <file>] [--policy-version <pin>]`
+  verb. Always writes the canonical JSON report to stdout
+  (mirroring to disk when `--output` is given). Exit `0` if every
+  fixture's actual verdict matches its label, `1` if at least
+  one mismatch, `2` on fixture / labels load failure or
+  policy-version pin mismatch (per-prompt-13 contract).
+- `tests/test_red_team_harness.py` (NEW): 19 cases covering:
+  - The current confusion matrix is pinned as a regression
+    baseline (`pass`->`reject`: 4, `reject`->`reject`: 4,
+    `manual_review`->`reject`: 4; `matches=4`, `mismatches=8`,
+    `false_reject=8`). Drift in the scorer, anti-gaming
+    detector, decision-policy thresholds, or canonicalization
+    fails the suite loudly with a diff.
+  - Hygiene: >= 12 fixtures, all four required categories
+    present at the prescribed counts, every fixture has a
+    label, every label verdict is canonical, report is
+    byte-deterministic across consecutive runs.
+  - Every `RedTeamError` surface raises (missing fixtures dir,
+    missing labels, policy-version pin mismatch, unlabeled
+    fixture, unknown verdict in labels).
+  - CLI smokes shell out to `python -m coherence_engine
+    red-team-run` and assert exit `1` on the current mismatch
+    baseline, exit `2` on missing fixtures dir + on
+    policy-version pin mismatch, and exit `0` when labels are
+    aligned to currently observed actual verdicts via a
+    tmp-path `labels_aligned.json`.
+- `docs/specs/red_team_harness.md` (NEW): documents fixture
+  authoring (required fields, four categories, name/PII
+  prohibitions), the canonical verdict vocabulary, per-case +
+  aggregate report schema, CLI exit codes, determinism guarantees
+  (`tfidf` embedder + heuristic contradiction backend, sorted
+  filename iteration, no DB writes), and a step-by-step
+  "bumping the pin" workflow for intentional behavior changes.
+
+Prohibitions honored (matches prompt 13):
+- No fixture identifies a real founder or company; all names are
+  synthetic (Meridian Analytics, Orchid Care, Civic Beacon,
+  Tidewater Logistics, Polaris Health, Larkfield Robotics,
+  Stratos Cloud, Helix AI, Nimbus Ledger, Brightspoke).
+- The harness performs zero network I/O — it uses only the
+  `tfidf` embedder + `heuristic` contradiction backend already
+  configured by `ScoringService`. The tests are intentionally
+  NOT marked network-dependent.
+- Only files listed in SCOPE were created or modified.
+
+Verification:
+  cd Coherence_Engine_Project
+  python3 -m pytest coherence_engine/tests/test_red_team_harness.py -v   # 19 passed
+  python3 -m coherence_engine red-team-run \
+    --fixtures-dir coherence_engine/tests/adversarial/fixtures \
+    --labels coherence_engine/tests/adversarial/labels.json \
+    --output /tmp/ce-redteam.json
+  # exit 1 (8 mismatches against the current pinned baseline)
+
+
+--------------------------------------------------------------------------------
+PREVIOUS PROMPT (PRIOR) — 2026-04-17 (Wave 4, prompt 12/20)
+--------------------------------------------------------------------------------
+
+Shadow-mode evaluation + `scoring_mode` enforcement landed. The
+fund orchestrator can now run applications through scoring +
+decision-artifact generation without triggering founder/partner
+notification side effects, record the would-be decision as a
+distinct artifact kind, and promote an application from `shadow`
+to `enforce` (or vice versa) via a dedicated CLI verb with a
+post-decision guardrail.
+
+- `server/fund/models.py` (MODIFIED): new
+  `Application.scoring_mode: Mapped[str] = mapped_column(String(16),
+  nullable=False, server_default="enforce")`. Existing rows default
+  to `enforce`, preserving production behavior.
+- `alembic/versions/20260417_000004_scoring_mode.py` (NEW):
+  idempotent migration adding the `scoring_mode` column
+  (`String(16)`, NOT NULL, server_default `"enforce"`) to
+  `fund_applications`. Downgrade uses `batch_alter_table` for SQLite
+  compatibility. Revision `20260417_000004` → down_revision
+  `20260417_000003`.
+- `server/fund/services/application_service.py` (MODIFIED):
+  - `process_next_scoring_job` branches on `app.scoring_mode`:
+    * `enforce` (default) — unchanged: `kind="decision_artifact"`
+      persistence via `persist_decision_artifact`;
+      `DecisionIssued` carries `mode="enforce"`.
+    * `shadow` — builds + validates the same
+      `decision_artifact.v1` bundle but persists it as
+      `kind="shadow_decision_artifact"` through a new
+      `_persist_shadow_decision_artifact` helper; `DecisionIssued`
+      carries `mode="shadow"`; `_handle_transcript_rejection`
+      skips the `FounderNotified` publish for shadow apps.
+  - `create_escalation_packet` raises
+    `escalation_forbidden_in_shadow_mode` for shadow applications
+    — no partner escalation packets are produced under shadow.
+  - New `set_scoring_mode(application_id, *, new_mode,
+    force=False)` method: validates the mode, idempotent on
+    no-op, and refuses `enforce -> shadow` after a decision has
+    been issued unless `force=True`. `shadow -> enforce` is
+    always allowed.
+- `server/fund/services/event_publisher.py` (MODIFIED): exports
+  `SCORING_MODE_ENFORCE`, `SCORING_MODE_SHADOW`,
+  `tag_payload_with_mode(payload, mode)`, and
+  `is_shadow_event_payload(payload)` — a single shared vocabulary
+  for event mode tagging used by the service and tests.
+- `server/fund/schemas/events/decision_issued.v1.json` (MODIFIED):
+  gains an OPTIONAL `mode` property (`enum =
+  ["enforce", "shadow"]`, default `"enforce"`); NOT added to
+  `required` — pre-prompt-12 events still validate.
+- `cli.py` (MODIFIED): new `application set-mode --application-id
+  <id> --mode enforce|shadow [--force]` verb. Prints a JSON
+  result (`application_id`, `previous_mode`, `new_mode`,
+  `changed`); exits `2` on validation failure (missing app,
+  forbidden `enforce -> shadow` without `--force`, unknown mode).
+- `tests/test_shadow_mode.py` (NEW): 22 cases covering:
+  - Model defaults + explicit-shadow persistence.
+  - Event-publisher mode helpers (`tag_payload_with_mode` /
+    `is_shadow_event_payload` including rejection of bogus
+    values).
+  - All six `set_scoring_mode` transition branches (including
+    `--force` override and shadow -> enforce round trip).
+  - End-to-end worker runs proving shadow yields a
+    `shadow_decision_artifact` row (and NOT a production
+    `decision_artifact`), `DecisionIssued` carries
+    `mode="shadow"`, no `FounderNotified` is enqueued,
+    `create_escalation_packet` is blocked.
+  - CLI smokes for happy path, forbidden transition (exit 2),
+    `--force` success, missing application (exit 2), and shadow
+    -> enforce round trip.
+
+Prohibitions honored (matches prompt 12):
+- `decision_issued` event was NOT renamed or dropped (schema
+  only gains an OPTIONAL field).
+- Enforce-mode notification side effects are NOT silently
+  swallowed: the shadow suppression path is gated strictly on
+  `scoring_mode == "shadow"` and is covered by a dedicated
+  assertion that `FounderNotified` IS emitted under enforce
+  (implicit in the existing enforce-path events test flow) and
+  is NOT emitted under shadow.
+- Files outside SCOPE were not modified, with one explicitly
+  directed exception: the step-by-step instructs updating
+  `decision_issued.v1.json`; the SCOPE list omitted the schema
+  file but the step-by-step is normative, so the schema change
+  is intentional and minimal (optional-field only).
+
+Verification:
+  PYTHONPATH=.. python3 -m pytest tests/test_shadow_mode.py -v   # 22 passed
+  PYTHONPATH=.. python3 -m coherence_engine application set-mode \
+    --application-id <app_id> --mode shadow
+  PYTHONPATH=.. python3 -m pytest tests/ -q                       # 584 passed
+                                                                   # (3 unrelated
+                                                                   # pre-existing
+                                                                   # flakes not
+                                                                   # caused by
+                                                                   # this prompt)
+
+
+--------------------------------------------------------------------------------
+PREVIOUS PROMPT (PRIOR) — 2026-04-17 (Wave 4, prompt 11/20)
+--------------------------------------------------------------------------------
+
+Historical backtest pipeline landed. The project now has a
+deterministic, offline replay of the governed historical-outcomes
+dataset through the current scorer + decision policy, using a fixed
+`PortfolioSnapshot` (loaded from disk) so that results are
+reproducible regardless of the live portfolio state. The backtest
+report carries verdict counts, a Brier score, a 10-bin reliability
+curve, per-domain breakdowns, and all per-row replay records, and is
+serialized to byte-identical JSON across repeated runs.
+
+- `server/fund/services/backtest.py` (NEW): offline replay service.
+  Exposes `@dataclass(frozen=True) BacktestConfig`
+  (`dataset_path`, `decision_policy_version`,
+  `portfolio_snapshot_path`, `output_path`, `seed`,
+  `requested_check_usd`, `domain_default`),
+  `@dataclass(frozen=True) BacktestReport` (schema version
+  `backtest-report-v1`, aggregates, reliability curve, domain
+  breakdown, per-row records), `BacktestRowResult`, `ReliabilityBin`,
+  `BacktestError`, `load_portfolio_snapshot(path)`, and the public
+  entry point `run_backtest(config) -> BacktestReport`. For each row
+  the service rebuilds the 95% calibrated superiority interval via
+  `calibrated_superiority_interval_95(...)`, constructs a synthetic
+  `application` + `score_record`, and invokes
+  `DecisionPolicyService.evaluate(...)` with the fixed snapshot.
+  `BacktestReport.to_canonical_bytes()` uses
+  `json.dumps(sort_keys=True, separators=(",", ":"))` + `"\n"` and
+  is byte-stable across runs (enforced by test).
+- `cli.py` (MODIFIED): new `backtest-run` subcommand with
+  `--dataset`, `--policy-version`, `--portfolio-snapshot`,
+  `--output`, `--seed`, `--requested-check-usd`,
+  `--domain-default`. Exits `2` on dataset validation failure
+  (reusing `validate_historical_outcomes_export`) or on
+  `decision_policy_version` pin mismatch; `0` on success.
+- `deploy/scripts/run_backtest.py` (NEW): thin sys.path-aware
+  wrapper mirroring `merge_governed_historical_outcomes.py`.
+- `tests/fixtures/backtest/mini_dataset.jsonl` (NEW): 10 curated
+  governed-format rows across three domains (`market_economics`,
+  `public_health`, `governance`).
+- `tests/fixtures/backtest/snapshot.json` (NEW): fixed
+  `PortfolioSnapshot` payload with NAV, reserve, drawdown, regime,
+  per-domain invested USD.
+- `tests/test_backtest.py` (NEW): 18 cases — fixture sanity,
+  snapshot loader happy/error paths, report shape + metric ranges +
+  reliability-bin count, byte-identical output on repeated runs,
+  digest stability, Brier-score sensitivity (midpoint flip leaves
+  Brier unchanged; flipping a high-predicted row to a negative
+  outcome raises Brier by the expected `ΔP²/N ≈ 0.030`; asymmetric
+  flip produces a directional change), policy-version-pin and
+  invalid-row rejections (both `BacktestError` at service level and
+  exit `2` from the CLI), output-path file write, dataset
+  immutability under replay, and CLI smokes for happy path (stdout
+  == file bytes), invalid dataset (exit 2), and policy-version
+  mismatch (exit 2).
+- `docs/specs/backtest_spec.md` (NEW): documents inputs, outputs,
+  metric definitions, the `predicted_probability = clamp((CS+1)/2,
+  0, 1)` affine map, the 10-bin reliability-curve convention, CLI
+  contract, and the reproducibility + no-network + no-live-read
+  prohibitions.
+
+Prohibitions honored (matches prompt 11):
+- No network I/O.
+- No reads of the live portfolio_state / positions tables
+  anywhere on the backtest path — the snapshot always comes from
+  `config.portfolio_snapshot_path` (or the zero-default when
+  omitted).
+- No writes to `data/governed/*`.
+- Files outside SCOPE were not modified.
+
+Verification:
+  PYTHONPATH=.. python3 -m pytest tests/test_backtest.py -v   # 18 passed
+  PYTHONPATH=.. python3 -m coherence_engine backtest-run \
+    --dataset tests/fixtures/backtest/mini_dataset.jsonl \
+    --policy-version decision-policy-v1 \
+    --portfolio-snapshot tests/fixtures/backtest/snapshot.json \
+    --output /tmp/ce-backtest.json
+  PYTHONPATH=.. python3 -m pytest tests/ -q \
+    --deselect tests/test_worker_ops_telemetry.py \
+    --deselect tests/test_scorer.py::TestContradictoryText::test_contradictory_pitch
+  # -> 559 passed, 3 skipped, 6 deselected
+
+The two deselected tests are the same pre-existing flakes noted
+in the prompt 10 summary — they pass in isolation and are
+unrelated to this prompt's changes.
+
+
+--------------------------------------------------------------------------------
+EARLIER PROMPT — 2026-04-17 (Wave 2, prompt 10/20)
+--------------------------------------------------------------------------------
+
+Portfolio state persistence + concentration policy landed. The decision
+policy can now read real per-domain concentration, liquidity reserve,
+drawdown proxy, and regime from a dedicated append-only persistence
+layer instead of relying on hardcoded defaults or in-memory mappings.
+The `R(S, portfolio_state)` terms are unchanged in shape; they now have
+a real source of truth.
+
+- `server/fund/models.py` (MODIFIED, additive only): two new ORM
+  classes — `PortfolioState` (id, as_of [indexed], fund_nav_usd,
+  liquidity_reserve_usd, drawdown_proxy ∈ [0,1], regime ∈
+  {normal, stress, recovery}, optional note, created_at) and
+  `Position` (id, application_id [indexed], domain [indexed],
+  invested_usd, status ∈ {active, wound_down, exited} [indexed],
+  created_at, updated_at). All existing models untouched.
+- `alembic/versions/20260417_000003_portfolio_state.py` (NEW):
+  idempotent `upgrade()` creates `portfolio_state` and `positions`
+  tables (no-ops if already created via `Base.metadata.create_all`)
+  with indexes `ix_portfolio_state_as_of`, `ix_positions_application_id`,
+  `ix_positions_domain`, `ix_positions_status`, and the composite
+  `ix_positions_domain_status`. Symmetric `downgrade()` drops both
+  tables and indexes.
+- `server/fund/repositories/portfolio_repository.py` (NEW):
+  `PortfolioRepository(db)` with `latest_state()`,
+  `latest_state_as_dict()`, `active_positions_by_domain() ->
+  dict[str, float]` (sum invested_usd by domain where status="active",
+  deterministic key-sorted), `active_positions_total()`,
+  `domain_concentration_by_nav()`, `set_liquidity_reserve(usd, *,
+  note=None)` (append-only — never mutates prior rows; carries forward
+  NAV / drawdown / regime from the previous snapshot),
+  `record_state(...)`, `record_position(...)`. All writes are
+  append-only; no trades, transfers, or live-ledger writes occur.
+- `server/fund/services/decision_policy.py` (MODIFIED, additive only):
+  introduces `@runtime_checkable` Protocol `PortfolioStateProvider`
+  with `get_snapshot() -> PortfolioSnapshot | None`, frozen dataclass
+  `PortfolioSnapshot(fund_nav_usd, liquidity_reserve_usd,
+  drawdown_proxy, regime, domain_invested_usd, as_of)`, helper
+  `portfolio_snapshot_from_repository(repo)` (duck-typed; no hard import
+  of the repo module), and `snapshot_to_portfolio_state(snapshot, *,
+  domain_primary)` that projects the persisted snapshot vocabulary
+  (regime: normal|stress|recovery) into the legacy policy mapping
+  vocabulary (regime: neutral|stress|defensive|expansion via
+  `_PERSISTED_REGIME_TO_POLICY`). `DecisionPolicyService.__init__` now
+  accepts an optional `portfolio_provider`; `evaluate(...)` accepts
+  an optional kw-only `portfolio_snapshot` and resolves the effective
+  state in this order: explicit `portfolio_state` mapping >
+  explicit snapshot > injected provider > pre-existing defaults. The
+  legacy-envelope return shape is preserved exactly when no source is
+  active. When portfolio touches occur, `portfolio_adjustments` gains
+  one new key, `portfolio_snapshot_source` ∈ {explicit_mapping,
+  explicit_snapshot, provider}, for audit.
+- `cli.py` (MODIFIED, additive only): new `portfolio-state` subcommand
+  group with verbs `show` (prints latest snapshot + per-domain active
+  USD totals + per-domain concentration as JSON) and `set-reserve
+  --usd <amount> [--note ...]` (writes a new append-only snapshot row
+  with the liquidity reserve updated and prior NAV/drawdown/regime
+  carried forward; emits the resulting row as JSON). Both verbs ensure
+  the `portfolio_state` / `positions` tables exist via
+  `Base.metadata.create_all` so operators can run them on a fresh
+  environment without first running migrations.
+- `tests/test_portfolio_state.py` (NEW, 14 tests): Alembic migration
+  upgrade→downgrade→upgrade round-trip (SQLite, exercises only the new
+  migration via `command.stamp` to avoid an unrelated pre-existing
+  migration that emits SQLite-incompatible DDL); repository write+read
+  round-trip; append-only set_liquidity_reserve preserves prior rows
+  byte-for-byte; repository input validation; backward-compatibility
+  envelope identity (`DecisionPolicyService(provider=None_returning).
+  evaluate == DecisionPolicyService().evaluate`); provider snapshot
+  routing surfaces in `portfolio_adjustments`; explicit
+  `portfolio_state` overrides the provider; high domain-USD share lifts
+  `threshold_required` by ≥0.005 with a non-zero `r_domain_usd` audit
+  term; `portfolio_snapshot_from_repository` reflects persisted state;
+  `snapshot_to_portfolio_state(None) is None`; `_FakeProvider` is a
+  Protocol-compliant `isinstance(..., PortfolioStateProvider)`; CLI
+  smoke for `show` on empty DB (prints null state); CLI smoke for
+  `set-reserve` then `show` round-trip; CLI rejects negative
+  `--usd` with exit 2.
+
+Scope note: this prompt only adds the persistence + provider plumbing
+and does NOT change any existing `R(S, portfolio_state)` term formulas.
+The `decision_policy_v1.x` policy versioning rules from prompt 01 are
+preserved: when no portfolio context is active, the legacy
+`decision-policy-v1.0.0` envelope is returned verbatim.
+
+No new runtime dependencies.
+
+Verify with:
+  PYTHONPATH=.. python3 -m pytest tests/test_portfolio_state.py -v   # 14 passed
+  PYTHONPATH=.. python3 -m pytest tests/test_decision_policy_portfolio.py tests/test_decision_policy_spec.py tests/test_decision_artifact.py -v   # 21 passed
+  PYTHONPATH=.. COHERENCE_FUND_DATABASE_URL="sqlite:///./.tmp.db" python3 -m coherence_engine portfolio-state show
+  PYTHONPATH=.. COHERENCE_FUND_DATABASE_URL="sqlite:///./.tmp.db" python3 -m coherence_engine portfolio-state set-reserve --usd 250000 --note smoke
+  PYTHONPATH=.. python3 -m pytest tests/ --deselect tests/test_scorer.py::TestContradictoryText::test_contradictory_pitch -q
+    # 544 passed, 3 skipped, 1 deselected (modulo two pre-existing flaky
+    # worker-telemetry tests that pass in isolation; both unrelated to
+    # this prompt's changes).
+
+
+--------------------------------------------------------------------------------
+PREVIOUS PROMPT — 2026-04-16 (Wave 2, prompt 09/20)
+--------------------------------------------------------------------------------
+
+Deterministic anti-gaming detector wired into composite scoring. The
+detector produces `AntiGamingReport(score, flags, metrics)` where the
+clean-convention `score ∈ [0, 1]` (1.0 = clean). The composite scorer
+now multiplies its raw composite by `(0.5 + 0.5 * anti_gaming_score)`:
+a bounded penalty that cannot reduce a clean score and cannot more than
+halve the worst case. No new ML dependencies — all stdlib.
+
+- `core/anti_gaming.py` (NEW): `detect_anti_gaming(propositions, *,
+  prior_corpus=(), templates=()) -> AntiGamingReport` with documented
+  flag-code constants `AG_TEMPLATE_OVERLAP` (weight 0.30, char-trigram
+  Jaccard vs templates > 0.6), `AG_PRIOR_CORPUS_ECHO` (0.25, char-trigram
+  Jaccard vs prior_corpus > 0.8), `AG_REPETITIVE_FILLER` (0.20, mean
+  pairwise length-normalized sublinear-TF cosine > 0.85 — stdlib, no
+  sklearn), `AG_FLUENCY_WITHOUT_CONTENT` (0.15, ratio of long+complex
+  props to metric/numeric-bearing props > 3.0), `AG_CONTRADICTION_DENIAL`
+  (0.25, per-sentence negation + content-token repetition without a
+  concession marker). `FLAG_WEIGHTS` mapping exported for tests;
+  `score = clamp(1.0 - sum_weights, 0, 1)`. `metrics` dict carries raw
+  measurements for audit (`template_overlap_max`, `self_similarity_mean`,
+  `prior_corpus_overlap_max`, `fluency_ratio`,
+  `contradiction_denial_count`).
+- `core/scorer.py` (MODIFIED, additive only): new keyword-only kwarg
+  `anti_gaming: bool = True` (plus optional `prior_corpus=()` /
+  `templates=()`) on `CoherenceScorer.score(...)`. Backward-compatible:
+  existing single-arg callers continue to work; a clean report never
+  reduces the composite. `CoherenceResult.metadata` gains
+  `raw_composite_score`, `anti_gaming_score`, `anti_gaming_flags`,
+  `anti_gaming_metrics`. Detector exceptions fall back to
+  multiplier=1.0 (scoring never fails on anti-gaming issues). The
+  n_propositions<2 early-return also fills these metadata keys with
+  clean defaults.
+- `server/fund/services/scoring.py` (MODIFIED): `anti_gaming_score` in
+  the returned dict is now sourced from the detector via the scorer's
+  metadata (replacing the previous contradiction-count heuristic),
+  with the canonical clean-score convention (1.0 = clean). Also adds
+  `anti_gaming_flags` (list of flag codes) and `anti_gaming_metrics`
+  (raw measurements) to the dict.
+- `tests/fixtures/anti_gaming/clean.json` / `template_echo.json` /
+  `repetitive.json` (NEW): three scenario fixtures.
+- `tests/test_anti_gaming.py` (NEW, 12 tests): clean fixture → no
+  flags, score == 1.0; template_echo → `AG_TEMPLATE_OVERLAP`;
+  repetitive → `AG_REPETITIVE_FILLER`; synthetic prior-corpus echo →
+  `AG_PRIOR_CORPUS_ECHO`; empty propositions → clean default;
+  byte-determinism across calls; bounded-penalty property
+  `composite >= 0.5 * raw`; clean pitch preserves composite
+  (multiplier == 1.0); `anti_gaming=False` disables the penalty;
+  flag-weight shape invariant; `ScoringService.score_application(...)`
+  pass-through to dict fields.
+
+Scope note: `server/fund/services/decision_policy.py` was intentionally
+left untouched (out of scope). Its existing anti-gaming gate thresholds
+were authored against the placeholder "risk-score" convention (high =
+bad) from the previous `scoring.py` heuristic and need to be re-tuned
+for the canonical clean-score convention in a follow-up prompt.
+`DecisionPolicyService` unit tests still pass because they feed
+`anti_gaming_score` as hardcoded dict inputs rather than invoking the
+scorer.
+
+Verify with:
+  PYTHONPATH=.. python3 -m pytest tests/test_anti_gaming.py -v
+  PYTHONPATH=.. python3 -m pytest tests/ --deselect tests/test_scorer.py::TestContradictoryText::test_contradictory_pitch -q
+    # 532 passed, 3 skipped, 1 deselected
+  PYTHONPATH=.. python3 -c "from coherence_engine.core.anti_gaming import detect_anti_gaming; print('ok')"
+
+
+--------------------------------------------------------------------------------
+PREVIOUS PROMPT — 2026-04-16 (Wave 1, prompt 08/20)
+--------------------------------------------------------------------------------
+
+Versioned prompt registry with SHA pinning landed. Every LLM prompt now
+has a stable id, semver version, owner, status ({draft, shadow, prod}),
+and the SHA-256 of its body file's raw bytes, with CLI verbs to inspect,
+verify, and derive a stable registry digest for the decision artifact's
+`pins.prompt_registry_digest` slot.
+
+- `data/prompts/registry.json` (NEW): schema_version `prompt-registry-v1`
+  with two seed prod entries — `interview_opening` v1.0.0 and
+  `self_critique` v1.0.0 — both owned by `fund-ops`. Each entry carries
+  `body_path` plus lowercase hex `content_sha256` computed over the raw
+  on-disk bytes (no normalization). Prompt body text is never embedded
+  inline.
+- `data/prompts/bodies/interview_opening.v1.md` (NEW) and
+  `data/prompts/bodies/self_critique.v1.md` (NEW): short Markdown
+  templates suitable as LLM system/user prompts.
+- `server/fund/services/prompt_registry.py` (NEW):
+  `load_registry(path=None) -> Registry`,
+  `verify_registry(registry, repo_root=None) -> VerificationReport` with
+  `.ok`, `.mismatches[]`, `.missing[]`,
+  `registry_digest(registry) -> str` (stable SHA-256 over the sorted
+  `(id, version, content_sha256)` tuples; deterministic,
+  order-insensitive to declaration order, version-sensitive),
+  `resolve(prompt_id, version, registry=None) -> PromptEntry`,
+  `default_registry_path()`, `iter_entries`, dataclasses `PromptEntry`,
+  `Registry`, `Mismatch`, `VerificationReport`, and
+  `PromptRegistryError`. Loader enforces `schema_version`, required
+  keys, allowed statuses, and `(id, version)` uniqueness.
+- `cli.py` (MODIFIED, additive only): new `prompt-registry` subcommand
+  group with verbs `list`, `verify`, `digest`. All three accept
+  `--registry <path>`; `list` and `verify` accept `--json`.
+  Verification failure exits 2, matching the parity convention set by
+  `validate-historical-export`. `digest` prints exactly the value
+  intended for `pins.prompt_registry_digest`.
+- `tests/test_prompt_registry.py` (NEW, 17 tests): load/parse,
+  happy-path verify OK on fresh fixtures, body-mutation detection,
+  missing-body reporting, digest determinism across calls, digest
+  order-insensitivity, digest changes when a body SHA changes,
+  `resolve` hit/miss, schema/status/duplicate rejection, shipped
+  registry self-verifies, plus four CLI subprocess smokes
+  (`verify` exit 0, `list` prints seeded entries, `digest` emits a
+  valid hex sha256, `verify` exit 2 on a tampered out-of-tree fixture).
+- `docs/specs/prompt_registry.md` (NEW): schema, digest semantics,
+  draft -> shadow -> prod lifecycle, CLI verb table, and invariants
+  (raw-bytes hashing, no inline bodies, shipped registry verifies in CI).
+
+No new runtime dependencies.
+
+Verify with:
+  PYTHONPATH=.. python3 -m pytest tests/test_prompt_registry.py -v   # 17 passed
+  PYTHONPATH=.. python3 -m coherence_engine prompt-registry list
+  PYTHONPATH=.. python3 -m coherence_engine prompt-registry verify
+  PYTHONPATH=.. python3 -m coherence_engine prompt-registry digest
+  PYTHONPATH=.. python3 -m pytest tests/ --deselect tests/test_scorer.py::TestContradictoryText::test_contradictory_pitch -q
+    # 520 passed, 3 skipped, 1 deselected
+
+
+--------------------------------------------------------------------------------
+PREVIOUS PROMPT — 2026-04-16 (Wave 3, prompt 07/20)
+--------------------------------------------------------------------------------
+
+Reproducible decision artifact generator (`decision_artifact.v1`) landed.
+After scoring + decision, the worker now bundles inputs, per-layer scores,
+domain mix, ontology references, decision outcome, and pinned versions into
+a single canonical JSON artifact whose serialization is byte-identical
+across runs over the same persisted state.
+
+- `server/fund/schemas/artifacts/decision_artifact.v1.json` (NEW): JSON
+  Schema Draft 2020-12, `additionalProperties: false`, with required
+  `artifact_id` / `artifact_kind="decision_artifact"` /
+  `schema_version="1"` / `application_id` / `session_id` / `occurred_at` /
+  `inputs_digest` / `scoring{composite, per_layer{contradiction,
+  argumentation, embedding, compression, structural}, uncertainty{lower,
+  upper}, scoring_version}` / `domain{weights[], normative_profile,
+  schema_version, notes}` / `ontology_graph_id` / `ontology_graph_digest` /
+  `decision{verdict, cs_superiority, cs_required, reason_codes,
+  decision_policy_version}` / `pins{scoring_version,
+  decision_policy_version, optional prompt_registry_digest}`.
+- `server/fund/services/decision_artifact.py` (NEW):
+  `build_decision_artifact(app_state) -> dict` deterministically assembles
+  the artifact and uses `json.dumps(sort_keys=True, separators=(",", ":"))`
+  for the SHA-256 `inputs_digest`. Wall-clock is never read; `occurred_at`
+  comes from the application's authored timestamps.
+  `persist_decision_artifact(session, app_id, artifact_dict,
+  scoring_job_id=None) -> ArgumentArtifact` validates against the v1 schema
+  and writes a row with `kind="decision_artifact"` and the canonical bytes
+  in `payload_json`. Verdict normalization maps internal `fail` -> canonical
+  `reject` to match the `decision_issued.v1` enum.
+- `server/fund/models.py`: `ArgumentArtifact` now carries `kind` (default
+  `"generic"`, indexed) and optional `payload_json`; `scoring_job_id`
+  relaxed to nullable.
+- `alembic/versions/20260417_000002_artifact_kind.py` (NEW): adds `kind` +
+  `payload_json` columns idempotently, uses server_default `"generic"` for
+  backfill, and uses `batch_alter_table` on SQLite for downgrade symmetry.
+  Non-SQLite dialects also relax `scoring_job_id` to nullable in-place.
+- `server/fund/services/application_service.py`: after `upsert_decision`,
+  builds the artifact via the new `_build_artifact_app_state` helper (uses
+  `app.updated_at` ISO string, never `datetime.now()`) and persists it
+  before publishing the existing `DecisionIssued` event. The event already
+  carries the canonical summary fields cs_superiority / cs_required /
+  decision_policy_version / scoring_version via the prompt 02 validator.
+- `tests/test_decision_artifact.py` (NEW, 11 tests): schema required-key
+  assertion, deterministic byte-identical build, inputs_digest changes
+  when inputs change, happy-path schema validation, tampered artifact
+  (missing `decision_policy_version`) is rejected, unknown top-level key
+  is rejected, `fail` -> `reject` normalization, pins always include
+  scoring_version + decision_policy_version, optional
+  `prompt_registry_digest` round-trips, persisted row carries
+  `kind="decision_artifact"` with canonical payload_json, validation
+  blocks partial writes.
+
+No new runtime dependencies; the prompt 02 event schemas remain unchanged.
+
+Verify with:
+  python3 -m pytest tests/test_decision_artifact.py -v
+  PYTHONPATH=.. python3 -m pytest tests/ --deselect tests/test_scorer.py::TestContradictoryText::test_contradictory_pitch -q
+  PYTHONPATH=.. python3 -m alembic upgrade head
+  python3 -c "from coherence_engine.server.fund.services.decision_artifact import build_decision_artifact, persist_decision_artifact; print('ok')"
+
+
+--------------------------------------------------------------------------------
+PREVIOUS PROMPT — 2026-04-16 (Wave 3, prompt 06/20)
+--------------------------------------------------------------------------------
+
+Hybrid domain reconstruction. Domain detection now produces a weighted
+`DomainMix` that fuses four signals (topical embeddings, premise
+overlap, ontology entities, and normative markers) without removing or
+renaming the existing single-domain `DomainDetector.detect()` API.
+
+- `core/types.py`: added frozen `NormativeProfile(rights, utilitarian,
+  deontic)` and frozen `DomainMix(weights, normative,
+  ontology_graph_id=None, notes=None, schema_version="domain-mix-v1")`.
+  `DomainMix.top()` returns the highest-weight `(domain, weight)` entry
+  or `None` for empty mixes. Existing dataclasses are untouched.
+- `server/fund/data/normative_markers.json` (NEW): per-axis lemma lists
+  under `axes.rights` / `axes.utilitarian` / `axes.deontic`, with
+  `schema_version="normative-markers-v1"`.
+- `domain/normative.py` (NEW):
+  `compute_normative_profile(propositions) -> NormativeProfile`. Uses
+  simple regex tokenization on lowercased text, counts token matches
+  against each axis's marker list, and returns the share of tokens per
+  axis clamped to [0, 1]. Empty input yields an all-zero profile.
+  Lexicon load falls back to sane defaults on IO/JSON failures.
+- `domain/premises.py`: added module-level `DOMAIN_NORMATIVE` table
+  with declared `(rights, utilitarian, deontic)` triples for all 10
+  domains, plus `get_domain_normative(key)` that returns
+  `(0.33, 0.33, 0.33)` for unknown keys. Existing
+  `DOMAINS`/`TENSIONS`/loaders are unchanged.
+- `domain/detector.py`: added
+  `detect_domain_mix(propositions, ontology, *, embedder=None,
+  top_k=3) -> DomainMix`. Legacy `DomainDetector` class is untouched.
+  - `w_topic`: cosine similarity between mean proposition embedding
+    and per-domain premise centroids (SBERT-or-TF-IDF via
+    `embeddings.base.get_embedder` when `embedder is None`).
+  - `w_premise`: Jaccard between the argument's content lemmas and
+    each domain's premise lemmas after stopword filtering.
+  - `w_ontology`: for each domain, normalized count of ontology entity
+    surface forms that appear as word-boundary matches inside the
+    domain's premise text.
+  - `w_normative`: cosine between the argument's `NormativeProfile`
+    vector and each domain's declared normative profile.
+  - Final per-domain score:
+    `0.4*w_topic + 0.25*w_premise + 0.2*w_ontology + 0.15*w_normative`.
+  - Graceful degradation: if a signal cannot be computed (missing
+    embedder, empty ontology, empty content, empty arg normative
+    vector, etc.) it is skipped, its coefficient is redistributed
+    across surviving signals, and a `"signal_skipped: <name>"` string
+    is appended to the returned `DomainMix.notes` tuple.
+  - Sort desc, clamp `top_k` to at least 1, renormalize the retained
+    weights so they sum to exactly 1.0. When every signal is skipped
+    (e.g. empty propositions and empty ontology), weights is `()` and
+    notes lists all four skipped signals.
+  - `ontology_graph_id` is a stable sha256-prefix fingerprint of the
+    ontology's entities+edges (or `None` for empty/missing ontology).
+- `tests/fixtures/hybrid_domain/rights_argument.json` (NEW): 4-
+  proposition rights-leaning fixture.
+- `tests/fixtures/hybrid_domain/market_argument.json` (NEW): 4-
+  proposition market-leaning fixture.
+- `tests/test_hybrid_domain.py` (12 tests): legacy single-domain API
+  preservation; rights fixture returns a valid `DomainMix` with
+  weights summing to 1.0 in descending order; determinism across
+  fresh TF-IDF embedders; TF-IDF fallback keeps `market_economics`
+  in the top-k for the market fixture; empty `OntologyGraph` adds
+  `signal_skipped: ontology`; `None` ontology also skips;
+  weights-sum-to-1 invariant across `top_k ∈ {1, 2, 3, 5}`; empty
+  propositions path returns empty weights and all four `signal_skipped`
+  notes; `DomainMix.top()` returns the highest-weight entry;
+  `ontology_graph_id` is a 16-character string when the ontology has
+  entities; `compute_normative_profile` puts rights-heavy text above
+  the utilitarian axis; empty-input normative profile is all zeros.
+
+No new runtime dependencies. `domain/comparator.py` is intentionally
+unchanged; callers that want a single-domain handoff can use
+`DomainMix.top()`.
+
+Verify with:
+  python3 -m pytest tests/test_hybrid_domain.py -v
+  python3 -m pytest tests/ --deselect tests/test_scorer.py::TestContradictoryText::test_contradictory_pitch -q
+  python3 -c "from coherence_engine.domain.detector import detect_domain_mix; print('ok')"
+

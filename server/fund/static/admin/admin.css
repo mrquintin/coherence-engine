@@ -1,0 +1,251 @@
+/*
+ * Coherence Fund admin dashboard stylesheet (prompt 19).
+ *
+ * Read-only operator UI. No form styling, no button-action styling —
+ * the dashboard surfaces do not mutate state (mutations remain CLI /
+ * API only, per the prompt-19 prohibition). Classes here are limited
+ * to layout, typography, tables, and status badges.
+ */
+
+:root {
+  --color-bg: #0f172a;
+  --color-panel: #1e293b;
+  --color-border: #334155;
+  --color-text: #e2e8f0;
+  --color-text-muted: #94a3b8;
+  --color-accent: #38bdf8;
+  --color-success: #22c55e;
+  --color-warn: #f59e0b;
+  --color-danger: #ef4444;
+  --color-row-alt: #111c2e;
+  --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-stack);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.admin-shell {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 32px 48px 32px;
+}
+
+.admin-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 12px;
+  margin-bottom: 24px;
+}
+
+.admin-header h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.admin-header .admin-nav {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.admin-header .admin-nav a {
+  color: var(--color-accent);
+  text-decoration: none;
+  margin-left: 12px;
+}
+
+.admin-header .admin-nav a:hover {
+  text-decoration: underline;
+}
+
+.admin-footer {
+  border-top: 1px solid var(--color-border);
+  margin-top: 32px;
+  padding-top: 12px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+h2 {
+  margin: 32px 0 12px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+.panel {
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+
+thead th {
+  text-align: left;
+  font-weight: 600;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+}
+
+tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+tbody tr:nth-child(even) {
+  background: var(--color-row-alt);
+}
+
+tbody tr:hover {
+  background: #162033;
+}
+
+td.mono,
+th.mono,
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  background: var(--color-border);
+  color: var(--color-text);
+}
+
+.badge.status-succeeded,
+.badge.status-sent,
+.badge.status-pass {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--color-success);
+}
+
+.badge.status-failed,
+.badge.status-fail,
+.badge.status-error {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--color-danger);
+}
+
+.badge.status-pending,
+.badge.status-running,
+.badge.status-queued {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--color-warn);
+}
+
+.badge.mode-shadow {
+  background: rgba(148, 163, 184, 0.2);
+  color: var(--color-text-muted);
+}
+
+.badge.mode-enforce {
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--color-accent);
+}
+
+.pagination {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.fragment-empty {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.muted {
+  color: var(--color-text-muted);
+}
+
+.kv-grid {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  row-gap: 6px;
+  column-gap: 16px;
+  font-size: 13px;
+}
+
+.kv-grid dt {
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.kv-grid dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+pre.artifact {
+  background: #0b1323;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 12px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text);
+  max-height: 420px;
+}
+
+.htmx-indicator {
+  opacity: 0;
+  transition: opacity 0.2s ease-in;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-left: 8px;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+  opacity: 1;
+}

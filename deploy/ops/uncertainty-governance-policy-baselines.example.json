@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "description": "Example per-environment approved SHA256 pins for data/governed/uncertainty_governance_policy.json. For hosted CI, store the full JSON in GitHub Environment secret UNCERTAINTY_GOVERNANCE_POLICY_BASELINES_JSON on environment uncertainty-governance-baseline-verification (see .github/workflows/uncertainty-policy-governance-verification.yml). Do not commit production pins. For local deterministic runs, copy to a private path (e.g. gitignored) and pass --baselines to deploy/scripts/verify_uncertainty_policy_baselines.py. Update expected_policy_sha256 and change_review after each approved policy change.",
+  "policy_path": "data/governed/uncertainty_governance_policy.json",
+  "environments": {
+    "shadow": {
+      "expected_policy_sha256": "b68843a56a456004437f52f0f52eb17f058885172c61d9a1766ab92c8145de83",
+      "ownership": {
+        "owning_team": "platform-risk@example.com",
+        "policy_owner": "uncertainty-governance-oncall"
+      },
+      "change_review": {
+        "last_baseline_approved_at": "2026-04-01",
+        "approval_change_id": "CHG-0000-example"
+      }
+    },
+    "canary": {
+      "expected_policy_sha256": "b68843a56a456004437f52f0f52eb17f058885172c61d9a1766ab92c8145de83",
+      "ownership": {
+        "owning_team": "platform-risk@example.com",
+        "policy_owner": "uncertainty-governance-oncall"
+      },
+      "change_review": {
+        "last_baseline_approved_at": "2026-04-01",
+        "approval_change_id": "CHG-0000-example"
+      }
+    },
+    "prod": {
+      "expected_policy_sha256": "b68843a56a456004437f52f0f52eb17f058885172c61d9a1766ab92c8145de83",
+      "ownership": {
+        "owning_team": "platform-risk@example.com",
+        "policy_owner": "uncertainty-governance-oncall"
+      },
+      "change_review": {
+        "last_baseline_approved_at": "2026-04-01",
+        "approval_change_id": "CHG-0000-example"
+      }
+    }
+  }
+}

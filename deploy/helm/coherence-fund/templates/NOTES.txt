@@ -1,0 +1,11 @@
+Coherence Fund deployment installed.
+
+Useful commands:
+
+  kubectl get deploy,po,svc -n {{ .Release.Namespace }}
+
+API health endpoints:
+
+  /live
+  /ready
+

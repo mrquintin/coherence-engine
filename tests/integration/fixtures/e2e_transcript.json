@@ -1,0 +1,23 @@
+{
+  "language": "en-US",
+  "channel": "web_voice",
+  "duration_seconds": 640,
+  "quality_score_hint": 0.88,
+  "sections_covered": [
+    "problem",
+    "solution",
+    "evidence",
+    "market",
+    "moat",
+    "execution",
+    "risk",
+    "funding_request"
+  ],
+  "domains_hinted": [
+    "market_economics",
+    "technology",
+    "regulatory"
+  ],
+  "transcript_text": "We help regulated enterprises reproduce their machine-learning decisions end to end, because audit teams at banks and hospitals currently cannot replay why a model approved or rejected an application six months earlier. Our platform captures every upstream input, every model version, and every downstream decision artifact as a content-addressed bundle, so that given the same bundle a different operator can rebuild the same decision byte for byte. Because the bundle is deterministic, regulators who demand reproducibility under SR 11-7 and the EU AI Act can verify claims without trusting our infrastructure. We sell a subscription license priced per production model, and we integrate with the customer's existing model registry; therefore onboarding does not require ripping out anyone's MLOps stack. The market is large because every regulated industry touching automated decisions needs this: US banks alone run tens of thousands of production models under model-risk-management programs, and the total addressable spend we measured from three design-partner contracts is roughly nine hundred million dollars annually. Our moat comes from the deterministic build system we wrote in-house, which pins compiler flags, library versions, and random seeds across heterogeneous hardware; two competitors attempted similar work and both shipped non-deterministic bundles, which is why their audit customers churned. The team has combined fifteen years of experience shipping audit-grade systems: one founder led reproducibility at a top-five US bank, and the other shipped the provenance tooling at a national healthcare payer, so execution risk on the core engine is low. The primary risk is regulatory drift, because if the reproducibility standard changes mid-contract we must re-pin our bundles; we mitigate this by versioning every contract artifact and by maintaining a compliance advisory board with two former regulators. We are raising one-hundred-fifty-thousand dollars to hire two engineers and run six pilot deployments across banking and healthcare design partners, and we expect to convert at least four of those pilots to paid annual contracts within twelve months based on the conversion rate we observed in our initial three letters of intent.",
+  "fixture_purpose": "Offline end-to-end reproducibility integration test (prompt 16). The transcript is intentionally long enough to pass the transcript-quality gate, contains explicit causal markers ('because', 'therefore', 'so that') so the ontology stage emits non-trivial relations, and spans multiple domains (market_economics, technology, regulatory) so DomainMix is non-degenerate. Do NOT edit without also updating tests/integration/test_e2e_pipeline.py, since digest-comparison assertions depend on byte-stable content."
+}

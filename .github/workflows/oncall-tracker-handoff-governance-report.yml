@@ -1,0 +1,60 @@
+# Scheduled release-readiness summary for the latest successful optional tracker handoff.
+# Best-effort: if no run has published `oncall-tracker-handoff`, emits a skip JSON (job still succeeds).
+# Requires GitHub CLI (`actions:read` via GITHUB_TOKEN).
+
+name: On-call tracker handoff governance report
+
+on:
+  schedule:
+    - cron: "40 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  handoff-governance-report:
+    name: Summarize latest tracker handoff governance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download latest tracker handoff artifact (best effort)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/oncall-tracker-handoff-src artifacts/governance-oncall-tracker
+          export GH_TOKEN
+          RID=$(gh run list --workflow oncall-route-verification.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
+          if [ -z "${RID}" ] || [ "${RID}" = "null" ]; then
+            echo '{"ok":false,"reason":"no_successful_oncall_route_verification_run"}' > artifacts/governance-oncall-tracker/oncall-tracker-handoff-governance-skip.json
+            exit 0
+          fi
+          if ! gh run download "${RID}" -n oncall-tracker-handoff -D artifacts/oncall-tracker-handoff-src 2>/dev/null; then
+            echo "{\"ok\":false,\"reason\":\"oncall_tracker_handoff_artifact_missing\",\"run_id\":${RID}}" > artifacts/governance-oncall-tracker/oncall-tracker-handoff-governance-skip.json
+            exit 0
+          fi
+          HJ="artifacts/oncall-tracker-handoff-src/oncall-tracker-handoff-results.json"
+          if [ ! -f "${HJ}" ]; then
+            echo "{\"ok\":false,\"reason\":\"results_json_missing\",\"run_id\":${RID}}" > artifacts/governance-oncall-tracker/oncall-tracker-handoff-governance-skip.json
+            exit 0
+          fi
+          python deploy/scripts/report_oncall_tracker_handoff_governance.py \
+            --handoff-json "${HJ}" \
+            --json-out artifacts/governance-oncall-tracker/oncall-tracker-handoff-governance.json \
+            --markdown-out artifacts/governance-oncall-tracker/oncall_tracker_handoff_governance.md
+
+      - name: Upload handoff governance report
+        uses: actions/upload-artifact@v4
+        with:
+          name: oncall-tracker-handoff-governance-report
+          path: artifacts/governance-oncall-tracker/
+          if-no-files-found: error

@@ -1,0 +1,42 @@
+---
+description: Safe parallel execution delegation with file ownership partitioning
+alwaysApply: true
+---
+
+# Execution Delegation Safety Protocol
+
+When delegating implementation tasks to multiple subagents in chat runtime, prevent edit collisions.
+
+## 1) Build A Work Partition Before Delegating
+
+- Split by **owned file sets**, not by vague themes.
+- Assign each subagent exclusive ownership of concrete paths.
+- Keep ownership disjoint whenever possible.
+
+## 2) Shared File Rule
+
+- If a shared/core file must change, assign it to exactly one **integrator** subagent.
+- Other subagents must not edit integrator-owned files.
+
+## 3) Delegation Contract (must be explicit)
+
+Every subagent brief must include:
+
+- objective
+- owned files
+- forbidden files (owned by others)
+- required outputs (code/tests/docs)
+
+## 4) Merge Strategy
+
+- Run subagents in parallel only for disjoint ownership.
+- If ownership overlaps, run in phases (serial handoff), not parallel.
+- Integrator applies final cross-cutting edits after other streams finish.
+
+## 5) Verification Gate
+
+Before final response:
+
+- confirm no two subagents edited the same file in the same phase
+- run tests/lints relevant to changed files
+- summarize per-stream ownership and final integrated result

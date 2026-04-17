@@ -1,0 +1,113 @@
+image:
+  repository: ghcr.io/your-org/coherence-engine
+  tag: stable
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8010
+
+api:
+  replicas: 3
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+
+worker:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 400m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+  batchSize: 500
+  pollSeconds: 1
+
+scoringWorker:
+  replicas: 2
+  maxJobs: 200
+  pollSeconds: 1
+  leaseSeconds: 120
+  retryBaseSeconds: 5
+  resources:
+    requests:
+      cpu: 400m
+      memory: 768Mi
+    limits:
+      cpu: 2000m
+      memory: 3Gi
+
+env:
+  COHERENCE_FUND_AUTO_CREATE_TABLES: "false"
+  COHERENCE_FUND_SERVICE_NAME: "fund-orchestrator-api"
+  COHERENCE_FUND_SERVICE_VERSION: "0.2.0"
+  COHERENCE_FUND_TOPIC_PREFIX: "coherence.fund"
+  COHERENCE_FUND_OUTBOX_BACKEND: "kafka"
+  AWS_REGION: "us-east-1"
+  # Secret manager: keep in sync with cluster IRSA / WIF / Vault wiring (see values.yaml + deploy README).
+  COHERENCE_FUND_SECRET_MANAGER_PROVIDER: "aws"
+  COHERENCE_FUND_AWS_REGION: "us-east-1"
+  # In-process ops alert bridge: keep "none" until webhook is supplied via Kubernetes Secret (not ConfigMap).
+  COHERENCE_FUND_OPS_ALERT_ROUTER_MODE: "none"
+  # When enabling webhook mode, add to secretEnv or an ExternalSecret (never plain values):
+  # COHERENCE_FUND_OPS_ALERT_WEBHOOK_URL — Alertmanager, PagerDuty Events v2, Opsgenie, or other HTTPS receiver
+  # COHERENCE_FUND_OPS_ALERT_WEBHOOK_TOKEN — optional Bearer token
+  # Align URL/target with deploy/ops on-call policy row for this environment (escalation policy / receiver ref).
+
+secretEnv:
+  COHERENCE_FUND_DATABASE_URL: "postgresql+psycopg://coherence:coherence@postgres:5432/coherence_fund"
+  REDIS_URL: ""
+  KAFKA_BOOTSTRAP_SERVERS: "kafka-brokers.kafka.svc.cluster.local:9092"
+  SQS_QUEUE_URL: ""
+
+hpa:
+  api:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    cpuUtilization: 60
+    memoryUtilization: 75
+  worker:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    cpuUtilization: 65
+    memoryUtilization: 80
+  scoringWorker:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    cpuUtilization: 65
+    memoryUtilization: 80
+
+pdb:
+  api:
+    enabled: true
+    minAvailable: 2
+  worker:
+    enabled: true
+    minAvailable: 1
+  scoringWorker:
+    enabled: true
+    minAvailable: 1
+
+networkPolicy:
+  enabled: true
+
+migrations:
+  enabled: true
+
+# Optional: enable after Prometheus scrapes worker textfile metrics (see docs/ops/runbooks/production_observability_rollout.md).
+# prometheusRules:
+#   enabled: true
+#   alertTeam: platform
+#   extraAlertLabels:
+#     region: us-east-1
+

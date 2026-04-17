@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coherence.engine/specs/schemas/events/argument_compiled.v1.json",
+  "title": "ArgumentCompiledPayloadV1",
+  "type": "object",
+  "required": [
+    "application_id",
+    "argument_id",
+    "n_propositions",
+    "n_relations",
+    "propositions_uri",
+    "relations_uri",
+    "compiler_version",
+    "quality_flags"
+  ],
+  "properties": {
+    "application_id": {"type": "string", "minLength": 1},
+    "argument_id": {"type": "string", "minLength": 1},
+    "n_propositions": {"type": "integer", "minimum": 1},
+    "n_relations": {"type": "integer", "minimum": 0},
+    "propositions_uri": {"type": "string", "minLength": 1},
+    "relations_uri": {"type": "string", "minLength": 1},
+    "compiler_version": {"type": "string", "minLength": 1},
+    "quality_flags": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "count"],
+        "properties": {
+          "code": {"type": "string", "minLength": 1},
+          "count": {"type": "integer", "minimum": 1}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
+

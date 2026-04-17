@@ -1,0 +1,11 @@
+[Unit]
+Description=Coherence Fund Health Watchdog
+After=coherence-fund-api.service coherence-fund-worker.service coherence-fund-scoring-worker.service
+Wants=coherence-fund-api.service coherence-fund-worker.service coherence-fund-scoring-worker.service
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/etc/default/coherence-fund
+ExecStart=/bin/bash /opt/coherence_engine/deploy/systemd/coherence-fund-health-watchdog.sh
+

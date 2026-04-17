@@ -1,0 +1,910 @@
+# Recurring synthetic alert drill + deploy template checks (no external network by default).
+# Optional live webhook drill: workflow_dispatch input and/or repository variable
+# ONCALL_SCHEDULED_LIVE_PROVIDER_DRILL=true on the same weekly schedule (requires webhook secret).
+# Quiet windows (UTC hours, optional repo vars) suppress only scheduled live POSTs, not manual runs.
+# Artifacts: oncall-release-readiness (verification JSON, drill-evidence JSONL,
+# oncall-policy-hardening-summary.md, release-readiness-summary.md, incident-follow-up checklist,
+# env-specific follow-up issue bodies + ticket JSON templates: oncall-live-drill-followup-{staging,production}.md,
+# oncall-ticket-payload-{staging,production}.json);
+# optional oncall-tracker-handoff (oncall-tracker-handoff-results.json; schema oncall_tracker_handoff_results/v2:
+#   governance_audit with policy_resolution + drift vs builtin defaults, handoff_retry_policy summary,
+#   per-row contract_validation, closure_artifacts, response.reconciliation redacted identifiers) when opt-in + URL secrets present;
+#   Provider adapters (repo vars ONCALL_TRACKER_STAGING_HANDOFF_PROVIDER / ONCALL_TRACKER_PRODUCTION_HANDOFF_PROVIDER):
+#   generic (default) = raw ticket JSON POST; jira = Jira Cloud REST v3 issue shape; github = GitHub Issues API JSON.
+#   Pre-submit: deploy/scripts/validate_oncall_tracker_handoff.py enforces per-provider ticket contracts; invalid payloads fail
+#   the handoff job when a URL secret is set (no live POST). Optional policy overlay: secret ONCALL_TRACKER_HANDOFF_POLICY_JSON
+#   and/or repo var ONCALL_TRACKER_HANDOFF_POLICY_PATH → per-env max_attempts, retryable_http_statuses, backoff, idempotency_mode.
+#   Idempotency-Key = SHA-256(run_id|environment|sha256(source_payload_bytes)) unless idempotency_mode=off; bounded retries.
+# optional oncall-live-webhook-drill when live POST succeeds.
+# Artifact retention: optional repo var ONCALL_VERIFICATION_ARTIFACT_RETENTION_DAYS (1–90; default 14).
+#
+# Live drill operational closure (env-specific runbooks + issue template):
+# - docs/ops/runbooks/live_drill_staging.md
+# - docs/ops/runbooks/live_drill_prod.md
+# - .github/ISSUE_TEMPLATE/oncall-live-drill-followup.yml (Issues → New issue → On-call live drill follow-up)
+
+name: On-call route verification
+
+on:
+  schedule:
+    # Weekly: Wednesday 14:00 UTC — adjust to your primary on-call handoff window.
+    # Scheduled runs always execute safe-verification (no required outbound calls).
+    # Live provider POST runs on this cron only when vars.ONCALL_SCHEDULED_LIVE_PROVIDER_DRILL == 'true'
+    # and the optional quiet-window vars do not suppress the current UTC hour.
+    - cron: "0 14 * * 3"
+  workflow_dispatch:
+    inputs:
+      run_live_webhook_drill:
+        description: >
+          If true, POST a synthetic coherence_fund_worker_ops_alert envelope to
+          ONCALL_ROUTE_VERIFICATION_WEBHOOK_URL (requires that repo secret; uses outbound HTTPS).
+          Manual runs ignore scheduled quiet-window vars.
+        required: false
+        default: false
+        type: boolean
+      post_tracker_handoff:
+        description: >
+          If true, after the safe job uploads oncall-release-readiness, POST each generated
+          oncall-ticket-payload-{staging,production}.json to the matching tracker handoff URL secret
+          when set (outbound HTTPS). Envs without URL skip cleanly. Pair with repository variable
+          ONCALL_POST_TRACKER_HANDOFF=true for scheduled opt-in without this input.
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  safe-verification:
+    name: Safe drill (no outbound provider calls)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,fund-workers]"
+          python -m pip install "PyYAML>=6.0"
+
+      - name: Prepare artifact directory
+        run: mkdir -p artifacts/oncall
+
+      - name: Verify on-call route policy (local JSON, no network)
+        run: |
+          python deploy/scripts/verify_oncall_route_policy.py \
+            --policy deploy/ops/oncall-route-policy.example.json \
+            --json-out artifacts/oncall/oncall-route-verification.json \
+            --fail-on-stale-escalation-ownership \
+            --require-escalation-rotation-ref
+
+      - name: Parse YAML templates (workflows + deploy)
+        run: |
+          python <<'PY'
+          import pathlib
+          import sys
+
+          import yaml
+
+          root = pathlib.Path(".")
+          paths = [
+              root / ".github/workflows/oncall-route-verification.yml",
+              root / ".github/workflows/uncertainty-recalibration.yml",
+              root / "deploy/k8s/configmap-env-template.yaml",
+              root / "deploy/helm/coherence-fund/values.yaml",
+              root / "deploy/helm/coherence-fund/values-prod.yaml",
+          ]
+          for p in paths:
+              if not p.is_file():
+                  print(f"missing: {p}", file=sys.stderr)
+                  sys.exit(1)
+              yaml.safe_load(p.read_text())
+              print(f"ok: {p}")
+          PY
+
+      - name: Static route template checks (expected alert env keys)
+        run: |
+          python <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          needle = "COHERENCE_FUND_OPS_ALERT_ROUTER_MODE"
+          files = [
+              pathlib.Path("deploy/systemd/coherence-fund.env.example"),
+              pathlib.Path("deploy/k8s/configmap-env-template.yaml"),
+              pathlib.Path("deploy/helm/coherence-fund/values.yaml"),
+          ]
+          for f in files:
+              text = f.read_text()
+              if needle not in text:
+                  print(f"missing {needle} in {f}", file=sys.stderr)
+                  sys.exit(1)
+              print(f"ok: {f}")
+          PY
+
+      - name: Alert routing unit tests
+        run: pytest tests/test_ops_alert_routing.py -q
+
+      - name: On-call route policy verifier tests
+        run: pytest tests/test_oncall_route_policy_verifier.py -q
+
+      - name: Synthetic file-mode drill (temp JSONL)
+        run: |
+          python <<'PY'
+          import json
+          import os
+          import tempfile
+          from pathlib import Path
+
+          from coherence_engine.server.fund.services import alert_routing
+          from coherence_engine.server.fund.services.alert_routing import route_worker_ops_alert
+
+          alert_routing.reset_alert_routing_state_for_tests()
+          with tempfile.TemporaryDirectory() as d:
+              out = Path(d) / "drill_alerts.jsonl"
+              os.environ["COHERENCE_FUND_OPS_ALERT_ROUTER_MODE"] = "file"
+              os.environ["COHERENCE_FUND_OPS_ALERT_FILE_PATH"] = str(out)
+              os.environ["COHERENCE_FUND_OPS_ALERT_COOLDOWN_SECONDS"] = "0"
+              payload = {
+                  "component": "ci_synthetic_drill",
+                  "warn": ["oncall_route_verification"],
+                  "drill": True,
+                  "source": "github_actions_oncall_route_verification",
+              }
+              route_worker_ops_alert(["oncall_route_verification"], payload)
+              line = out.read_text(encoding="utf-8").strip().splitlines()[-1]
+              row = json.loads(line)
+              assert row["schema"] == "coherence_fund_worker_ops_alert/v1"
+              assert "oncall_route_verification" in row["warn_tags"]
+          print("synthetic file drill ok")
+          PY
+
+      - name: Artifact retention (days)
+        id: artifact_retention
+        run: |
+          d='${{ vars.ONCALL_VERIFICATION_ARTIFACT_RETENTION_DAYS }}'
+          case "$d" in
+            ''|*[!0-9]*) d=14 ;;
+          esac
+          if [ "$d" -lt 1 ]; then d=1; fi
+          if [ "$d" -gt 90 ]; then d=90; fi
+          echo "days=$d" >> "$GITHUB_OUTPUT"
+
+      - name: Drill evidence JSONL + release-readiness summary
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          GITHUB_SHA: ${{ github.sha }}
+          ONCALL_TRACKER_STAGING_PROJECT: ${{ vars.ONCALL_TRACKER_STAGING_PROJECT }}
+          ONCALL_TRACKER_PRODUCTION_PROJECT: ${{ vars.ONCALL_TRACKER_PRODUCTION_PROJECT }}
+          ONCALL_TRACKER_STAGING_LABELS: ${{ vars.ONCALL_TRACKER_STAGING_LABELS }}
+          ONCALL_TRACKER_PRODUCTION_LABELS: ${{ vars.ONCALL_TRACKER_PRODUCTION_LABELS }}
+        run: |
+          python <<'PY'
+          import json
+          import os
+          import time
+          from pathlib import Path
+
+          art = Path("artifacts/oncall")
+          ver_path = art / "oncall-route-verification.json"
+          verification = json.loads(ver_path.read_text(encoding="utf-8"))
+          evidence_path = art / "oncall-drill-evidence.jsonl"
+          now = time.time()
+          iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
+          lines = [
+              {
+                  "type": "policy_verification",
+                  "ts_unix": now,
+                  "ts_iso": iso,
+                  "github_event": os.environ.get("GITHUB_EVENT_NAME"),
+                  "github_run_id": os.environ.get("GITHUB_RUN_ID"),
+                  "github_run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+                  "github_sha": os.environ.get("GITHUB_SHA"),
+                  "verification": verification,
+              },
+              {
+                  "type": "synthetic_file_drill",
+                  "ts_unix": now,
+                  "ts_iso": iso,
+                  "github_event": os.environ.get("GITHUB_EVENT_NAME"),
+                  "github_run_id": os.environ.get("GITHUB_RUN_ID"),
+                  "result": "pass",
+                  "schema": "coherence_fund_worker_ops_alert/v1",
+                  "warn_tags": ["oncall_route_verification"],
+              },
+          ]
+          evidence_path.write_text(
+              "".join(json.dumps(row, sort_keys=True) + "\n" for row in lines),
+              encoding="utf-8",
+          )
+
+          ok = verification.get("ok") is True
+          status = "PASS" if ok else "FAIL"
+          st = verification.get("staleness") or {}
+          rot = verification.get("rotation_check") or {}
+          st_out = st.get("outcome", "n/a")
+          st_stale = st.get("stale")
+          rot_out = rot.get("outcome", "n/a")
+          hardening = art / "oncall-policy-hardening-summary.md"
+          hardening.write_text(
+              "\n".join(
+                  [
+                      "# On-call policy hardening (staleness + rotation)",
+                      "",
+                      "Generated from `oncall-route-verification.json` for this workflow run.",
+                      "",
+                      "## Escalation ownership freshness",
+                      "",
+                      f"- **outcome**: `{st_out}`",
+                      f"- **stale** (per policy max age): `{st_stale}`",
+                      f"- **reviewed_at**: `{st.get('reviewed_at')}`",
+                      f"- **age_days**: `{st.get('age_days')}`",
+                      f"- **max_age_days**: `{st.get('max_age_days')}`",
+                      f"- **reference_time_utc**: `{st.get('reference_time_utc')}`",
+                      f"- **fail_on_stale** (CI flag): `{st.get('fail_on_stale')}`",
+                      "",
+                      "## Escalation rotation references (PagerDuty / Opsgenie rows)",
+                      "",
+                      f"- **rotation check outcome**: `{rot_out}`",
+                      f"- **require_escalation_rotation_ref** (CI flag): `{rot.get('require_escalation_rotation_ref')}`",
+                      "",
+                  ]
+                  + [
+                      "| environment | provider | rotation_ref_present | outcome |",
+                      "|-------------|----------|----------------------|---------|",
+                  ]
+                  + [
+                      "| {env} | {prov} | {pres} | {oc} |".format(
+                          env=row.get("environment", ""),
+                          prov=row.get("oncall_provider") or "",
+                          pres=row.get("rotation_ref_present"),
+                          oc=row.get("outcome", ""),
+                      )
+                      for row in rot.get("environments") or []
+                  ]
+                  + ["",]
+              ),
+              encoding="utf-8",
+          )
+
+          followup = art / "oncall-incident-followup-checklist.md"
+          followup.write_text(
+              "\n".join(
+                  [
+                      "# On-call drill — incident follow-up checklist (template)",
+                      "",
+                      "Use this artifact after **live** provider drills or if a scheduled safe run surfaces policy or routing gaps.",
+                      "Copy rows into your incident/ticketing system; link tickets below when filed.",
+                      "",
+                      "## Delivery and ownership",
+                      "",
+                      "- [ ] Synthetic or live drill notification reached the **intended** on-call channel (PagerDuty, Opsgenie, Slack bridge, Alertmanager receiver).",
+                      "- [ ] Primary and secondary escalation paths match `deploy/ops/oncall-route-policy` for this environment.",
+                      "- [ ] On-call **acknowledged** within your SLO (record time + responder).",
+                      "",
+                      "## False positive / noise",
+                      "",
+                      "- [ ] If the drill was noisy or misrouted: note root cause (wrong receiver, duplicate route, label mismatch).",
+                      "- [ ] Ticket / doc link for routing fix: _________________________________",
+                      "",
+                      "## Policy and registry",
+                      "",
+                      "- [ ] If policy JSON or `escalation_rotation_ref` / `escalation_ownership_reviewed_at` needs update: open change and re-run `verify_oncall_route_policy.py` locally.",
+                      "- [ ] Governance ticket / PR link: _________________________________",
+                      "",
+                      "## Rollout completion hook",
+                      "",
+                      "- [ ] Mark recurring verification outcome in your ops calendar or status page (pass / skipped quiet / failed).",
+                      "- [ ] Attach this run’s `oncall-drill-evidence.jsonl` (and `oncall-live-webhook-drill.json` if present) to the record.",
+                      "",
+                      "## Ticket / issue automation hook",
+                      "",
+                      "- [ ] After a **live** drill (or material safe-run gap), open **Issues → New issue → On-call live drill follow-up**",
+                      "  (repository template `.github/ISSUE_TEMPLATE/oncall-live-drill-followup.yml`).",
+                      "- [ ] Use `docs/ops/runbooks/live_drill_staging.md` or `docs/ops/runbooks/live_drill_prod.md` for environment-specific closure steps.",
+                      "",
+                      f"_Generated in workflow run `{os.environ.get('GITHUB_RUN_ID')}` (`{os.environ.get('GITHUB_SHA', '')[:7]}…`)._",
+                      "",
+                      "## Environment-specific follow-up templates (CI-generated)",
+                      "",
+                      "- **Staging** issue body → `oncall-live-drill-followup-staging.md`; ticket JSON → `oncall-ticket-payload-staging.json`.",
+                      "- **Production** issue body → `oncall-live-drill-followup-production.md`; ticket JSON → `oncall-ticket-payload-production.json`.",
+                      "- Optional repo vars: `ONCALL_TRACKER_STAGING_PROJECT`, `ONCALL_TRACKER_PRODUCTION_PROJECT`, `ONCALL_TRACKER_STAGING_LABELS`, `ONCALL_TRACKER_PRODUCTION_LABELS` (comma-separated labels).",
+                      "",
+                  ]
+              ),
+              encoding="utf-8",
+          )
+
+          def _split_labels(raw: str, fallback: str) -> list[str]:
+              s = (raw or "").strip()
+              if not s:
+                  s = fallback
+              return [p.strip() for p in s.split(",") if p.strip()]
+
+          repo = (os.environ.get("GITHUB_REPOSITORY") or "OWNER/REPO").strip()
+          run_id = (os.environ.get("GITHUB_RUN_ID") or "").strip()
+          server = (os.environ.get("GITHUB_SERVER_URL") or "https://github.com").rstrip("/")
+          run_url = f"{server}/{repo}/actions/runs/{run_id}" if run_id else ""
+
+          env_specs = [
+              {
+                  "slug": "staging",
+                  "display": "staging",
+                  "issue_template_option": "staging",
+                  "project_var": "ONCALL_TRACKER_STAGING_PROJECT",
+                  "labels_var": "ONCALL_TRACKER_STAGING_LABELS",
+                  "default_labels": "oncall-drill,staging",
+                  "runbook": "docs/ops/runbooks/live_drill_staging.md",
+              },
+              {
+                  "slug": "production",
+                  "display": "production",
+                  "issue_template_option": "production",
+                  "project_var": "ONCALL_TRACKER_PRODUCTION_PROJECT",
+                  "labels_var": "ONCALL_TRACKER_PRODUCTION_LABELS",
+                  "default_labels": "oncall-drill,production",
+                  "runbook": "docs/ops/runbooks/live_drill_prod.md",
+              },
+          ]
+
+          for spec in env_specs:
+              proj_raw = (os.environ.get(spec["project_var"]) or "").strip()
+              proj_display = (
+                  proj_raw
+                  if proj_raw
+                  else f"(set repository variable {spec['project_var']})"
+              )
+              labels = _split_labels(
+                  os.environ.get(spec["labels_var"]) or "",
+                  spec["default_labels"],
+              )
+              title = f"[oncall-drill] {spec['display']} — route verification follow-up (run {run_id or 'RUN_ID'})"
+              md_path = art / f"oncall-live-drill-followup-{spec['slug']}.md"
+              md_path.write_text(
+                  "\n".join(
+                      [
+                          f"# On-call live drill follow-up — **{spec['display']}**",
+                          "",
+                          "> Paste into **Issues → New issue** (or your external tracker). Generated by `oncall-route-verification.yml` safe job.",
+                          "",
+                          "## Tracker routing (from repository variables or defaults)",
+                          "",
+                          f"- **Tracker project / board key**: `{proj_display}`",
+                          f"- **Labels** (comma-separated in var `{spec['labels_var']}`): `{', '.join(labels)}`",
+                          f"- **GitHub issue form**: choose environment **{spec['issue_template_option']}** in `.github/ISSUE_TEMPLATE/oncall-live-drill-followup.yml`",
+                          "",
+                          "## Workflow run (audit)",
+                          "",
+                          f"- **Run URL**: {run_url or '_Set after run; replace with Actions run link._'}",
+                          f"- **Commit**: `{os.environ.get('GITHUB_SHA', '')}`",
+                          "",
+                          "## Delivery and acknowledgment",
+                          "",
+                          "_Who received the drill, channel/service name, ack time vs SLO, drill flag and warn tags as expected._",
+                          "",
+                          "## Closure checklist",
+                          "",
+                          "- [ ] Primary/secondary escalation paths match on-call policy for this environment",
+                          "- [ ] False positive / noise reviewed (or N/A); tracking link if needed",
+                          "- [ ] Policy JSON or rotation/ownership metadata updated if required; verifier re-run",
+                          "- [ ] Evidence: `oncall-drill-evidence.jsonl`; `oncall-live-webhook-drill.json` if live job ran",
+                          "",
+                          "## Related tickets / PRs",
+                          "",
+                          "_Links to routing fixes, governance PRs, incident records._",
+                          "",
+                          "## Runbook",
+                          "",
+                          f"- `{spec['runbook']}`",
+                          "",
+                      ]
+                  ),
+                  encoding="utf-8",
+              )
+
+              ticket = {
+                  "schema": "oncall_live_drill_ticket_template/v1",
+                  "environment": spec["display"],
+                  "tracker_project_key": proj_raw,
+                  "tracker_project_repository_variable": spec["project_var"],
+                  "labels": labels,
+                  "labels_repository_variable": spec["labels_var"],
+                  "issue_title_suggested": title,
+                  "issue_body_markdown_artifact": md_path.name,
+                  "github_actions": {
+                      "workflow": "oncall-route-verification.yml",
+                      "run_url": run_url or None,
+                      "run_id": run_id or None,
+                      "repository": repo,
+                      "sha": os.environ.get("GITHUB_SHA") or None,
+                  },
+                  "evidence_artifacts": [
+                      "oncall-drill-evidence.jsonl",
+                      "oncall-live-webhook-drill.json",
+                  ],
+                  "notes": "Populate tracker-specific fields and create the ticket via your API, CLI, or paste from the paired .md file.",
+              }
+              (art / f"oncall-ticket-payload-{spec['slug']}.json").write_text(
+                  json.dumps(ticket, indent=2, sort_keys=True) + "\n",
+                  encoding="utf-8",
+              )
+
+          summary = art / "release-readiness-summary.md"
+          summary.write_text(
+              "\n".join(
+                  [
+                      "# On-call release-readiness (CI-generated artifact)",
+                      "",
+                      f"**Policy verification**: {status} (`error_count={verification.get('error_count')}`, `warning_count={verification.get('warning_count')}`).",
+                      "",
+                      "## Policy hardening (scheduled)",
+                      "",
+                      f"- **Staleness** (`escalation_ownership_reviewed_at` vs max age): outcome `{st_out}`, stale={st_stale}.",
+                      f"- **Rotation refs** (PagerDuty/Opsgenie `escalation_rotation_ref`): outcome `{rot_out}`.",
+                      "- Detail: see `oncall-policy-hardening-summary.md` in this artifact bundle.",
+                      "",
+                      "## Incident follow-up (artifact hook)",
+                      "",
+                      "- Template checklist: **`oncall-incident-followup-checklist.md`** (acknowledgment, noise, policy updates, rollout record).",
+                      "- After a **live** drill, complete the checklist and link tickets in your incident tool.",
+                      "- **GitHub issue template**: `.github/ISSUE_TEMPLATE/oncall-live-drill-followup.yml` — filed under **On-call live drill follow-up**.",
+                      "- **Runbooks**: `docs/ops/runbooks/live_drill_staging.md`, `docs/ops/runbooks/live_drill_prod.md`.",
+                      "",
+                      "## Environment-specific follow-up (staging / production)",
+                      "",
+                      "- **Staging**: pre-filled issue body `oncall-live-drill-followup-staging.md` and ticket template `oncall-ticket-payload-staging.json`.",
+                      "- **Production**: pre-filled issue body `oncall-live-drill-followup-production.md` and ticket template `oncall-ticket-payload-production.json`.",
+                      "- Optional repository variables: `ONCALL_TRACKER_STAGING_PROJECT`, `ONCALL_TRACKER_PRODUCTION_PROJECT`, `ONCALL_TRACKER_STAGING_LABELS`, `ONCALL_TRACKER_PRODUCTION_LABELS` (comma-separated).",
+                      "",
+                      "## Optional tracker API handoff",
+                      "",
+                      "- **Opt-in only**: workflow dispatch input `post_tracker_handoff` and/or repository variable `ONCALL_POST_TRACKER_HANDOFF=true` runs job `optional-tracker-handoff` after this artifact uploads.",
+                      "- Per environment, POST uses `oncall-ticket-payload-staging.json` / `oncall-ticket-payload-production.json` when secret `ONCALL_TRACKER_*_HANDOFF_URL` is set (optional `ONCALL_TRACKER_*_HANDOFF_TOKEN`); missing URL → skipped (no failure).",
+                      "- **Provider mode** (repository variables `ONCALL_TRACKER_STAGING_HANDOFF_PROVIDER` / `ONCALL_TRACKER_PRODUCTION_HANDOFF_PROVIDER`): `generic` (default, raw JSON body), `jira` (Jira REST issue create), `github` (GitHub Issues API).",
+                      "- **Governance**: `deploy/scripts/validate_oncall_tracker_handoff.py` validates required ticket fields/types per provider before POST; optional policy overlay `deploy/ops/oncall_tracker_handoff_policy.example.json` (copy private or set secret `ONCALL_TRACKER_HANDOFF_POLICY_JSON` / var `ONCALL_TRACKER_HANDOFF_POLICY_PATH`) for per-environment retry/idempotency bounds.",
+                      "- **Idempotency**: default `Idempotency-Key` = SHA-256(`run_id|environment|sha256(source ticket file)`); overlay may set `idempotency_mode` to `off`. **Retries**: bounded attempts/backoff/retryable status codes from overlay (defaults: 4 attempts; 408/429/selected 5xx; transient network).",
+                      "- Results (no secrets): artifact **`oncall-tracker-handoff`** → `oncall-tracker-handoff-results.json` (`oncall_tracker_handoff_results/v2`: `governance_audit` with `policy_resolution`, drift vs `builtin_defaults_reference`, effective policy + contract validation per env, per-row `closure_artifacts`, outcomes, `response.reconciliation` for tracker issue keys / redacted URLs).",
+                      "",
+                      "## Automated checks (this workflow run)",
+                      "",
+                      "- [x] `deploy/scripts/verify_oncall_route_policy.py` on repository example policy (no outbound calls), including `--fail-on-stale-escalation-ownership` and `--require-escalation-rotation-ref`",
+                      "- [x] YAML template parse (workflows + deploy)",
+                      "- [x] Static presence of `COHERENCE_FUND_OPS_ALERT_ROUTER_MODE` in templates",
+                      "- [x] `tests/test_ops_alert_routing.py`",
+                      "- [x] `tests/test_oncall_route_policy_verifier.py`",
+                      "- [x] Synthetic in-process file-mode drill (`coherence_fund_worker_ops_alert/v1`)",
+                      "- [x] `deploy/scripts/validate_oncall_tracker_handoff.py` ci-check on generated ticket templates (no network)",
+                      "- [x] `tests/test_validate_oncall_tracker_handoff.py`",
+                      "",
+                      "## Human / environment gates (track outside CI)",
+                      "",
+                      "- [ ] Per-environment `deploy/ops/oncall-route-policy` row matches PagerDuty escalation policy, Opsgenie team/policy, or Alertmanager `route`/`receiver` names",
+                      "- [ ] `COHERENCE_FUND_OPS_ALERT_WEBHOOK_*` (if used) stored as secrets, not ConfigMap/plain values",
+                      "- [ ] Recurring drill acknowledgment recorded in your incident tool or runbook",
+                      "",
+                      "See `docs/ops/runbooks/production_observability_rollout.md` for provider wiring, scheduled live drill opt-in, quiet windows, and optional live webhook drill.",
+                      "",
+                  ]
+              ),
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Tracker handoff governance (contract check, no network)
+        run: |
+          python deploy/scripts/validate_oncall_tracker_handoff.py ci-check \
+            --staging-payload artifacts/oncall/oncall-ticket-payload-staging.json \
+            --production-payload artifacts/oncall/oncall-ticket-payload-production.json \
+            --staging-provider generic \
+            --production-provider generic \
+            --policy deploy/ops/oncall_tracker_handoff_policy.example.json
+
+      - name: Tracker handoff governance unit tests
+        run: pytest tests/test_validate_oncall_tracker_handoff.py -q
+
+      - name: Upload on-call release-readiness artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: oncall-release-readiness
+          path: artifacts/oncall/
+          if-no-files-found: error
+          retention-days: ${{ fromJSON(steps.artifact_retention.outputs.days) }}
+
+      - name: Job summary
+        run: |
+          {
+            echo "## On-call route verification (safe mode)"
+            echo "- Local policy verification → artifact \`oncall-release-readiness/oncall-route-verification.json\`"
+            echo "- Policy hardening summary → \`oncall-policy-hardening-summary.md\` (staleness + rotation checks)"
+            echo "- Drill evidence JSONL → \`oncall-drill-evidence.jsonl\`"
+            echo "- Release-readiness summary → \`release-readiness-summary.md\`"
+            echo "- **Incident follow-up checklist** → \`oncall-incident-followup-checklist.md\` (post-drill / rollout hooks)"
+            echo "- **Env follow-up bodies** → \`oncall-live-drill-followup-staging.md\`, \`oncall-live-drill-followup-production.md\` (paste or external tracker)"
+            echo "- **Ticket JSON templates** → \`oncall-ticket-payload-staging.json\`, \`oncall-ticket-payload-production.json\`"
+            echo "- **Issue template** → \`.github/ISSUE_TEMPLATE/oncall-live-drill-followup.yml\` (Issues → **On-call live drill follow-up**)"
+            echo "- **Runbooks** → \`docs/ops/runbooks/live_drill_staging.md\`, \`docs/ops/runbooks/live_drill_prod.md\`"
+            echo "- YAML parse + static key checks"
+            echo "- \`tests/test_ops_alert_routing.py\` + \`tests/test_oncall_route_policy_verifier.py\` + \`tests/test_validate_oncall_tracker_handoff.py\`"
+            echo "- Synthetic file-mode drill (no network)"
+            echo ""
+            echo "Scheduled runs stay **safe** (no mandatory external calls). **Live** POSTs require secret \`ONCALL_ROUTE_VERIFICATION_WEBHOOK_URL\` plus either manual \`workflow_dispatch\` + \`run_live_webhook_drill\`, or repo var \`ONCALL_SCHEDULED_LIVE_PROVIDER_DRILL=true\` on schedule (optional UTC quiet hours via \`ONCALL_DRILL_QUIET_UTC_START\` / \`ONCALL_DRILL_QUIET_UTC_END\`)."
+            echo "**Tracker API handoff** (optional): job \`optional-tracker-handoff\` runs when \`workflow_dispatch\` + \`post_tracker_handoff\` **or** repo var \`ONCALL_POST_TRACKER_HANDOFF=true\`; per-env POST only if secret \`ONCALL_TRACKER_*_HANDOFF_URL\` is set (optional \`ONCALL_TRACKER_*_HANDOFF_TOKEN\`). Repo vars \`ONCALL_TRACKER_*_HANDOFF_PROVIDER\` select \`generic\` / \`jira\` / \`github\` (default generic). \`validate_oncall_tracker_handoff.py run\` enforces contracts + optional policy overlay (secret \`ONCALL_TRACKER_HANDOFF_POLICY_JSON\` overrides var \`ONCALL_TRACKER_HANDOFF_POLICY_PATH\`; both emit \`governance_audit.policy_resolution\` + drift vs built-ins). Artifact \`oncall-tracker-handoff\` records outcomes, \`closure_artifacts\`, and redacted \`response.reconciliation\` (no tokens). Repo var \`ONCALL_TRACKER_HANDOFF_WRITEBACK_RECONCILIATION=true\` runs \`writeback-reconciliation\` to append tracker keys/redacted URL hints into \`oncall-live-drill-followup-*.md\` in the uploaded bundle."
+            echo "Artifact retention (days): ${{ steps.artifact_retention.outputs.days }} (override with repo var \`ONCALL_VERIFICATION_ARTIFACT_RETENTION_DAYS\`, max 90)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  optional-tracker-handoff:
+    name: Optional tracker API handoff
+    runs-on: ubuntu-latest
+    needs: [safe-verification]
+    if: >-
+      needs.safe-verification.result == 'success' &&
+      (
+        (github.event_name == 'workflow_dispatch' && inputs.post_tracker_handoff == true) ||
+        vars.ONCALL_POST_TRACKER_HANDOFF == 'true'
+      )
+    steps:
+      - name: Tracker handoff artifact retention (days)
+        id: tracker_handoff_retention
+        run: |
+          d='${{ vars.ONCALL_VERIFICATION_ARTIFACT_RETENTION_DAYS }}'
+          case "$d" in
+            ''|*[!0-9]*) d=14 ;;
+          esac
+          if [ "$d" -lt 1 ]; then d=1; fi
+          if [ "$d" -gt 90 ]; then d=90; fi
+          echo "days=$d" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout (tracker handoff script)
+        uses: actions/checkout@v4
+
+      - name: Download oncall-release-readiness
+        uses: actions/download-artifact@v4
+        with:
+          name: oncall-release-readiness
+          path: artifacts/oncall
+
+      - name: POST ticket payloads to tracker endpoints (governed)
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          POST_TRACKER_HANDOFF_INPUT: ${{ inputs.post_tracker_handoff }}
+          ONCALL_POST_TRACKER_HANDOFF_VAR: ${{ vars.ONCALL_POST_TRACKER_HANDOFF }}
+          STAGING_URL: ${{ secrets.ONCALL_TRACKER_STAGING_HANDOFF_URL }}
+          STAGING_TOKEN: ${{ secrets.ONCALL_TRACKER_STAGING_HANDOFF_TOKEN }}
+          STAGING_PROVIDER: ${{ vars.ONCALL_TRACKER_STAGING_HANDOFF_PROVIDER }}
+          PRODUCTION_URL: ${{ secrets.ONCALL_TRACKER_PRODUCTION_HANDOFF_URL }}
+          PRODUCTION_TOKEN: ${{ secrets.ONCALL_TRACKER_PRODUCTION_HANDOFF_TOKEN }}
+          PRODUCTION_PROVIDER: ${{ vars.ONCALL_TRACKER_PRODUCTION_HANDOFF_PROVIDER }}
+          ONCALL_TRACKER_HANDOFF_POLICY_JSON: ${{ secrets.ONCALL_TRACKER_HANDOFF_POLICY_JSON }}
+          ONCALL_TRACKER_HANDOFF_POLICY_PATH: ${{ vars.ONCALL_TRACKER_HANDOFF_POLICY_PATH }}
+          HANDOFF_ARTIFACTS_DIR: artifacts/oncall
+          HANDOFF_OUT_DIR: artifacts/oncall-tracker-handoff
+        run: |
+          mkdir -p artifacts/oncall-tracker-handoff
+          python deploy/scripts/validate_oncall_tracker_handoff.py run --repo-root "${GITHUB_WORKSPACE}"
+
+      - name: Write reconciliation into follow-up markdown (opt-in)
+        if: ${{ vars.ONCALL_TRACKER_HANDOFF_WRITEBACK_RECONCILIATION == 'true' }}
+        run: |
+          set -euo pipefail
+          python deploy/scripts/validate_oncall_tracker_handoff.py writeback-reconciliation \
+            --results-json artifacts/oncall-tracker-handoff/oncall-tracker-handoff-results.json \
+            --artifacts-dir artifacts/oncall
+
+      - name: Upload tracker handoff results
+        uses: actions/upload-artifact@v4
+        with:
+          name: oncall-tracker-handoff
+          path: |
+            artifacts/oncall-tracker-handoff/
+            artifacts/oncall/oncall-live-drill-followup-staging.md
+            artifacts/oncall/oncall-live-drill-followup-production.md
+          if-no-files-found: error
+          retention-days: ${{ fromJSON(steps.tracker_handoff_retention.outputs.days) }}
+
+      - name: Job summary
+        run: |
+          python <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          p = Path("artifacts/oncall-tracker-handoff/oncall-tracker-handoff-results.json")
+          doc = json.loads(p.read_text(encoding="utf-8"))
+          sm = os.environ["GITHUB_STEP_SUMMARY"]
+          gov = doc.get("governance_audit") or {}
+          pol_src = gov.get("policy_source", "—")
+          drift = gov.get("policy_drift_vs_builtin_defaults") or {}
+          lines = [
+              "## Tracker API handoff (opt-in)",
+              "",
+              f"- **Trigger**: `{doc.get('trigger_detail')}`",
+              f"- **Result artifact**: `oncall-tracker-handoff/oncall-tracker-handoff-results.json` (schema `{doc.get('schema', '')}`; retention ${{ steps.tracker_handoff_retention.outputs.days }} days)",
+              f"- **Governance policy source**: `{pol_src}` (`governance_audit.policy_resolution.precedence_order`: secret JSON → repo var path → built-ins)",
+              f"- **Policy drift vs built-in defaults**: staging `has_drift={(drift.get('staging') or {}).get('has_drift')}`; production `has_drift={(drift.get('production') or {}).get('has_drift')}` (full diff in JSON)",
+              f"- **Summary**: {doc.get('summary', '')}",
+              "",
+              "| Environment | Provider | Contract | Status | HTTP | Attempts | Reconciliation | Notes |",
+              "|-------------|----------|----------|--------|------|----------|----------------|-------|",
+          ]
+          for row in doc.get("environments") or []:
+              env = row.get("environment", "")
+              req = row.get("request") or {}
+              prov = req.get("provider") or "—"
+              st = row.get("status", "")
+              cv = row.get("contract_validation") or {}
+              c_ok = cv.get("ok")
+              contract_s = "ok" if c_ok is True else ("fail" if c_ok is False else "—")
+              http = row.get("response") or {}
+              code = http.get("http_status")
+              code_s = str(code) if code is not None else "—"
+              att = http.get("attempts")
+              att_s = str(att) if att is not None else "—"
+              note = row.get("skip_reason") or (http.get("error") or "—")
+              recon = http.get("reconciliation") or {}
+              if recon.get("applicable"):
+                  rk = recon.get("tracker_issue_key")
+                  rn = recon.get("tracker_issue_number")
+                  rs = recon.get("tracker_issue_id_suffix")
+                  parts = []
+                  if rk:
+                      parts.append(f"key={rk}")
+                  if rn is not None:
+                      parts.append(f"num={rn}")
+                  if rs:
+                      parts.append(f"id…{rs}")
+                  recon_s = ", ".join(parts) if parts else "parsed"
+              elif recon.get("skip_reason"):
+                  recon_s = recon.get("skip_reason")
+              else:
+                  recon_s = "—"
+              lines.append(
+                  f"| {env} | {prov} | {contract_s} | {st} | {code_s} | {att_s} | {recon_s} | {note} |"
+              )
+          lines += [
+              "",
+              "Providers: repository variables `ONCALL_TRACKER_STAGING_HANDOFF_PROVIDER` / `ONCALL_TRACKER_PRODUCTION_HANDOFF_PROVIDER` — `generic` (default), `jira`, or `github` (adapter-specific JSON + headers).",
+              "Optional policy overlay: secret `ONCALL_TRACKER_HANDOFF_POLICY_JSON` (wins) and/or repository variable `ONCALL_TRACKER_HANDOFF_POLICY_PATH` (repo-relative JSON). See `deploy/ops/oncall_tracker_handoff_policy.example.json`.",
+              "Default idempotency: `Idempotency-Key` = SHA-256(`run_id|environment|sha256(ticket file)`); retries and retryable HTTP codes follow per-environment effective policy (clamped bounds).",
+              "Delivery closure: each row may include `closure_artifacts` (links to `oncall-live-drill-followup-*.md` + evidence filenames) and `response.reconciliation` (issue key / redacted URL host+path only).",
+              "Optional write-back: set repository variable `ONCALL_TRACKER_HANDOFF_WRITEBACK_RECONCILIATION=true` to append a `## Tracker reconciliation (automation write-back)` section to the follow-up markdown files included in this artifact.",
+              "Secrets: `ONCALL_TRACKER_STAGING_HANDOFF_URL` / `ONCALL_TRACKER_PRODUCTION_HANDOFF_URL` (optional matching `*_HANDOFF_TOKEN` for Bearer/Basic auth). No token values are written to the artifact.",
+          ]
+          Path(sm).write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+  optional-live-webhook-drill:
+    name: Optional live webhook drill
+    runs-on: ubuntu-latest
+    needs: [safe-verification]
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.run_live_webhook_drill == true) ||
+      (github.event_name == 'schedule' && vars.ONCALL_SCHEDULED_LIVE_PROVIDER_DRILL == 'true')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Evaluate scheduled quiet window (UTC)
+        id: live_drill_gate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          QUIET_START: ${{ vars.ONCALL_DRILL_QUIET_UTC_START }}
+          QUIET_END: ${{ vars.ONCALL_DRILL_QUIET_UTC_END }}
+        run: |
+          python <<'PY'
+          import os
+          from datetime import datetime, timezone
+
+          out_path = os.environ["GITHUB_OUTPUT"]
+          ev = (os.environ.get("EVENT_NAME") or "").strip()
+          qs_raw = (os.environ.get("QUIET_START") or "").strip()
+          qe_raw = (os.environ.get("QUIET_END") or "").strip()
+
+          def write(**kwargs):
+              with open(out_path, "a", encoding="utf-8") as out:
+                  for k, v in kwargs.items():
+                      out.write(f"{k}={v}\n")
+
+          if ev != "schedule":
+              write(proceed="true", gate_reason="manual_dispatch_ignores_quiet_window")
+              raise SystemExit(0)
+
+          if not qs_raw or not qe_raw:
+              write(proceed="true", gate_reason="no_quiet_window_configured")
+              raise SystemExit(0)
+
+          try:
+              start, end = int(qs_raw), int(qe_raw)
+          except ValueError:
+              write(proceed="true", gate_reason="invalid_quiet_vars_ignored")
+              raise SystemExit(0)
+
+          if not (0 <= start <= 23 and 0 <= end <= 23):
+              write(proceed="true", gate_reason="quiet_hours_out_of_range_ignored")
+              raise SystemExit(0)
+
+          h = datetime.now(timezone.utc).hour
+          if start == end:
+              in_quiet = False
+          elif start < end:
+              in_quiet = start <= h < end
+          else:
+              in_quiet = h >= start or h < end
+
+          if in_quiet:
+              write(proceed="false", gate_reason=f"inside_quiet_window_utc_hour_{h}")
+          else:
+              write(proceed="true", gate_reason="outside_quiet_window")
+          PY
+
+      - name: Live drill gate summary (quiet skip)
+        if: steps.live_drill_gate.outputs.proceed != 'true'
+        run: |
+          {
+            echo "## Live webhook drill skipped (quiet window)"
+            echo "- **Reason**: ${{ steps.live_drill_gate.outputs.gate_reason }}"
+            echo "- Scheduled live drills honor repo vars \`ONCALL_DRILL_QUIET_UTC_START\` and \`ONCALL_DRILL_QUIET_UTC_END\` (UTC hour 0–23 each). Empty vars = no quiet suppression."
+            echo "- Manual **Run workflow** with \`run_live_webhook_drill\` still posts outside this suppression."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Resolve webhook configuration
+        if: steps.live_drill_gate.outputs.proceed == 'true'
+        id: webhook
+        env:
+          WEBHOOK_URL: ${{ secrets.ONCALL_ROUTE_VERIFICATION_WEBHOOK_URL }}
+        run: |
+          if [ -z "${WEBHOOK_URL}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "ONCALL_ROUTE_VERIFICATION_WEBHOOK_URL is not set; skipping live drill (no failure)."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Live artifact retention (days)
+        id: live_artifact_retention
+        if: steps.live_drill_gate.outputs.proceed == 'true'
+        run: |
+          d='${{ vars.ONCALL_VERIFICATION_ARTIFACT_RETENTION_DAYS }}'
+          case "$d" in
+            ''|*[!0-9]*) d=14 ;;
+          esac
+          if [ "$d" -lt 1 ]; then d=1; fi
+          if [ "$d" -gt 90 ]; then d=90; fi
+          echo "days=$d" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        if: steps.live_drill_gate.outputs.proceed == 'true' && steps.webhook.outputs.configured == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package (envelope builder only)
+        if: steps.live_drill_gate.outputs.proceed == 'true' && steps.webhook.outputs.configured == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,fund-workers]"
+
+      - name: POST synthetic drill envelope
+        if: steps.live_drill_gate.outputs.proceed == 'true' && steps.webhook.outputs.configured == 'true'
+        env:
+          WEBHOOK_URL: ${{ secrets.ONCALL_ROUTE_VERIFICATION_WEBHOOK_URL }}
+          WEBHOOK_TOKEN: ${{ secrets.ONCALL_ROUTE_VERIFICATION_WEBHOOK_TOKEN }}
+        run: |
+          python <<'PY'
+          import json
+          import os
+          import time
+          import urllib.error
+          import urllib.request
+
+          from coherence_engine.server.fund.services.alert_routing import (
+              AlertRouterConfig,
+              build_alert_envelope,
+          )
+
+          url = (os.environ.get("WEBHOOK_URL") or "").strip()
+          if not url:
+              raise SystemExit("WEBHOOK_URL missing")
+          token = (os.environ.get("WEBHOOK_TOKEN") or "").strip()
+          cfg = AlertRouterConfig(
+              mode="webhook",
+              webhook_url=url,
+              webhook_token=token,
+              webhook_timeout_seconds=10.0,
+              cooldown_seconds=0,
+          )
+          now = time.time()
+          warn_tags = ["oncall_route_verification"]
+          payload = {
+              "component": "ci_synthetic_drill",
+              "warn": list(warn_tags),
+              "drill": True,
+              "source": "github_actions_oncall_route_verification_live",
+          }
+          envelope = build_alert_envelope(warn_tags, payload, cfg, fired_at_unix=now)
+          body = json.dumps(envelope, sort_keys=True, separators=(",", ":")).encode("utf-8")
+          req = urllib.request.Request(url, data=body, method="POST")
+          req.add_header("Content-Type", "application/json")
+          if token:
+              req.add_header("Authorization", f"Bearer {token}")
+          try:
+              with urllib.request.urlopen(req, timeout=cfg.webhook_timeout_seconds) as resp:
+                  resp.read()
+          except urllib.error.HTTPError as e:
+              print(f"webhook HTTP {e.code}: {e.reason}")
+              raise
+          print("live webhook drill POST completed")
+          PY
+
+      - name: Live webhook drill evidence (JSON artifact)
+        if: steps.live_drill_gate.outputs.proceed == 'true' && steps.webhook.outputs.configured == 'true'
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          mkdir -p artifacts/oncall-live
+          python <<'PY'
+          import json, os, time
+          from pathlib import Path
+          now = time.time()
+          rec = {
+              "type": "live_webhook_drill",
+              "ts_unix": now,
+              "ts_iso": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
+              "github_event": os.environ.get("GITHUB_EVENT_NAME"),
+              "github_run_id": os.environ.get("GITHUB_RUN_ID"),
+              "github_run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+              "github_sha": os.environ.get("GITHUB_SHA"),
+              "result": "post_completed",
+              "schema": "coherence_fund_worker_ops_alert/v1",
+          }
+          Path("artifacts/oncall-live/oncall-live-webhook-drill.json").write_text(
+              json.dumps(rec, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Upload live webhook drill artifact
+        if: steps.live_drill_gate.outputs.proceed == 'true' && steps.webhook.outputs.configured == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: oncall-live-webhook-drill
+          path: artifacts/oncall-live/
+          if-no-files-found: error
+          retention-days: ${{ fromJSON(steps.live_artifact_retention.outputs.days) }}
+
+      - name: Job summary
+        run: |
+          {
+            echo "## Live webhook drill (outcome)"
+            if [ "${{ steps.live_drill_gate.outputs.proceed }}" != "true" ]; then
+              echo "- No outbound POST: scheduled run inside quiet window or gate did not proceed (\`${{ steps.live_drill_gate.outputs.gate_reason }}\`)."
+            elif [ "${{ steps.webhook.outputs.configured }}" = "true" ]; then
+              echo "- Posted synthetic \`coherence_fund_worker_ops_alert/v1\` envelope to configured webhook."
+              echo "- Artifact \`oncall-live-webhook-drill/oncall-live-webhook-drill.json\` records this run (retention ${{ steps.live_artifact_retention.outputs.days }} days)."
+              echo "- Confirm delivery in PagerDuty / Opsgenie / Slack / Alertmanager receiver per your routing."
+              echo "- **Incident follow-up**: use safe-job artifact \`oncall-incident-followup-checklist.md\` (bundle \`oncall-release-readiness\`) for acknowledgment and ticket hooks."
+              echo "- **Env-specific templates** (same \`oncall-release-readiness\` bundle): \`oncall-live-drill-followup-staging.md\` / \`oncall-live-drill-followup-production.md\` and \`oncall-ticket-payload-staging.json\` / \`oncall-ticket-payload-production.json\` (optional repo vars \`ONCALL_TRACKER_*_PROJECT\` / \`ONCALL_TRACKER_*_LABELS\`)."
+              echo "- **Close the loop**: open **On-call live drill follow-up** (template \`oncall-live-drill-followup.yml\`); see \`docs/ops/runbooks/live_drill_staging.md\` / \`live_drill_prod.md\`."
+              echo "- **Tracker API handoff** (separate opt-in): \`post_tracker_handoff\` or \`ONCALL_POST_TRACKER_HANDOFF=true\` + \`ONCALL_TRACKER_*_HANDOFF_URL\` secrets → artifact \`oncall-tracker-handoff\` (see \`docs/ops/runbooks/production_observability_rollout.md\`)."
+            else
+              echo "- Skipped: set repo secret \`ONCALL_ROUTE_VERIFICATION_WEBHOOK_URL\` (optional \`ONCALL_ROUTE_VERIFICATION_WEBHOOK_TOKEN\`) to enable outbound drill."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

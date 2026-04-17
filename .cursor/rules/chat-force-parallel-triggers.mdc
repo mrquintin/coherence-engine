@@ -1,0 +1,32 @@
+---
+description: Deterministic trigger phrases for forced parallel delegation
+alwaysApply: true
+---
+
+# Force Parallel Trigger Phrases
+
+When the user includes an explicit force trigger in chat, always honor it (cap at 4).
+
+Accepted trigger patterns (case-insensitive):
+
+- `force_parallel=N`
+- `force-parallel=N`
+- `parallel:N`
+- `parallel=N`
+- `split_across=N`
+- `split across N agents`
+- `use N agents`
+- `delegate to N agents`
+
+Where `N` is an integer:
+
+- `N <= 1`: run single-agent
+- `N = 2..4`: run exactly `N` parallel subagents
+- `N > 4`: run 4 subagents and state that 4 is the max
+
+Execution requirements:
+
+- Do not ask follow-up confirmation for valid force triggers.
+- If multiple triggers appear, use the last one in the message.
+- If trigger is malformed or missing a number, ask one concise clarification.
+- If subagents are unavailable, continue single-agent and explicitly note fallback.

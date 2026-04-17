@@ -1,0 +1,11 @@
+{
+  "fund_nav_usd": 12000000.0,
+  "liquidity_reserve_usd": 600000.0,
+  "drawdown_proxy": 0.05,
+  "regime": "normal",
+  "domain_invested_usd": {
+    "market_economics": 1500000.0,
+    "public_health": 750000.0,
+    "governance": 250000.0
+  }
+}

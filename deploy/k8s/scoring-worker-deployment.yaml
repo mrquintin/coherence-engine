@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coherence-fund-scoring-worker
+  namespace: coherence-fund
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: coherence-fund-scoring-worker
+  template:
+    metadata:
+      labels:
+        app: coherence-fund-scoring-worker
+    spec:
+      containers:
+        - name: scoring-worker
+          image: ghcr.io/your-org/coherence-engine:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -lc
+            - >
+              python -m coherence_engine process-scoring-jobs
+              --run-mode loop
+              --max-jobs 100
+              --poll-seconds 2
+              --lease-seconds 120
+              --retry-base-seconds 5
+          envFrom:
+            - configMapRef:
+                name: coherence-fund-config
+            - secretRef:
+                name: coherence-fund-secrets
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -lc
+                - python -m coherence_engine.server.fund.scoring_worker --healthcheck
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -lc
+                - python -m coherence_engine.server.fund.scoring_worker --healthcheck
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"

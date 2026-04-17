@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coherence-engine/artifacts/decision_artifact/v1",
+  "title": "DecisionArtifactV1",
+  "type": "object",
+  "required": [
+    "artifact_id",
+    "artifact_kind",
+    "schema_version",
+    "application_id",
+    "session_id",
+    "occurred_at",
+    "inputs_digest",
+    "scoring",
+    "domain",
+    "ontology_graph_id",
+    "ontology_graph_digest",
+    "decision",
+    "pins"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "artifact_id": {"type": "string", "minLength": 1},
+    "artifact_kind": {"type": "string", "const": "decision_artifact"},
+    "schema_version": {"type": "string", "const": "1"},
+    "application_id": {"type": "string", "minLength": 1},
+    "session_id": {"type": "string", "minLength": 1},
+    "occurred_at": {"type": "string", "minLength": 1},
+    "inputs_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "scoring": {
+      "type": "object",
+      "required": ["composite", "per_layer", "uncertainty", "scoring_version"],
+      "additionalProperties": false,
+      "properties": {
+        "composite": {"type": "number"},
+        "per_layer": {
+          "type": "object",
+          "required": [
+            "contradiction",
+            "argumentation",
+            "embedding",
+            "compression",
+            "structural"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "contradiction": {"type": "number"},
+            "argumentation": {"type": "number"},
+            "embedding": {"type": "number"},
+            "compression": {"type": "number"},
+            "structural": {"type": "number"}
+          }
+        },
+        "uncertainty": {
+          "type": "object",
+          "required": ["lower", "upper"],
+          "additionalProperties": false,
+          "properties": {
+            "lower": {"type": "number"},
+            "upper": {"type": "number"}
+          }
+        },
+        "scoring_version": {"type": "string", "minLength": 1}
+      }
+    },
+    "domain": {
+      "type": "object",
+      "required": ["weights", "normative_profile", "schema_version", "notes"],
+      "additionalProperties": false,
+      "properties": {
+        "weights": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["domain", "weight"],
+            "additionalProperties": false,
+            "properties": {
+              "domain": {"type": "string", "minLength": 1},
+              "weight": {"type": "number"}
+            }
+          }
+        },
+        "normative_profile": {
+          "type": "object",
+          "required": ["rights", "utilitarian", "deontic"],
+          "additionalProperties": false,
+          "properties": {
+            "rights": {"type": "number"},
+            "utilitarian": {"type": "number"},
+            "deontic": {"type": "number"}
+          }
+        },
+        "schema_version": {"type": "string", "minLength": 1},
+        "notes": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "ontology_graph_id": {"type": "string"},
+    "ontology_graph_digest": {"type": "string"},
+    "decision": {
+      "type": "object",
+      "required": [
+        "verdict",
+        "cs_superiority",
+        "cs_required",
+        "reason_codes",
+        "decision_policy_version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "verdict": {"type": "string", "enum": ["pass", "reject", "manual_review"]},
+        "cs_superiority": {"type": "number"},
+        "cs_required": {"type": "number"},
+        "reason_codes": {"type": "array", "items": {"type": "string"}},
+        "decision_policy_version": {"type": "string", "minLength": 1}
+      }
+    },
+    "pins": {
+      "type": "object",
+      "required": ["scoring_version", "decision_policy_version"],
+      "additionalProperties": false,
+      "properties": {
+        "scoring_version": {"type": "string", "minLength": 1},
+        "decision_policy_version": {"type": "string", "minLength": 1},
+        "prompt_registry_digest": {"type": "string"}
+      }
+    }
+  },
+  "examples": [
+    {
+      "artifact_id": "art_0123456789abcdef",
+      "artifact_kind": "decision_artifact",
+      "schema_version": "1",
+      "application_id": "app_abc123",
+      "session_id": "ivw_abc123",
+      "occurred_at": "2026-04-17T12:00:00Z",
+      "inputs_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "scoring": {
+        "composite": 0.71,
+        "per_layer": {
+          "contradiction": 0.8,
+          "argumentation": 0.7,
+          "embedding": 0.65,
+          "compression": 0.6,
+          "structural": 0.72
+        },
+        "uncertainty": {"lower": 0.18, "upper": 0.31},
+        "scoring_version": "scoring-v1.0.0"
+      },
+      "domain": {
+        "weights": [
+          {"domain": "market_economics", "weight": 1.0}
+        ],
+        "normative_profile": {"rights": 0.0, "utilitarian": 0.0, "deontic": 0.0},
+        "schema_version": "domain-mix-v1",
+        "notes": []
+      },
+      "ontology_graph_id": "",
+      "ontology_graph_digest": "",
+      "decision": {
+        "verdict": "pass",
+        "cs_superiority": 0.29,
+        "cs_required": 0.18,
+        "reason_codes": [],
+        "decision_policy_version": "decision-policy-v1"
+      },
+      "pins": {
+        "scoring_version": "scoring-v1.0.0",
+        "decision_policy_version": "decision-policy-v1"
+      }
+    }
+  ]
+}

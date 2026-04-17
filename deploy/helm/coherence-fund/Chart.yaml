@@ -1,0 +1,7 @@
+apiVersion: v2
+name: coherence-fund
+description: Coherence Fund API + outbox and scoring worker deployment chart
+type: application
+version: 0.1.0
+appVersion: "0.2.0"
+

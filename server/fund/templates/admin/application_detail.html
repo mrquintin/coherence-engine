@@ -1,0 +1,265 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Application {{ application.id }} — Coherence Fund Admin{% endblock %}
+
+{% block main %}
+  <section class="panel" id="application-summary">
+    <h2>Application {{ application.id }}</h2>
+    <dl class="kv-grid">
+      <dt>Application ID</dt>
+      <dd>{{ application.id }}</dd>
+
+      <dt>Founder ID</dt>
+      <dd>{{ application.founder_id }}</dd>
+
+      <dt>Founder name</dt>
+      <dd>{{ application.founder_name or "—" }}</dd>
+
+      <dt>Company</dt>
+      <dd>{{ application.company_name or "—" }}</dd>
+
+      <dt>One-liner</dt>
+      <dd>{{ application.one_liner }}</dd>
+
+      <dt>Requested check (USD)</dt>
+      <dd>{{ application.requested_check_usd }}</dd>
+
+      <dt>Primary domain</dt>
+      <dd>{{ application.domain_primary }}</dd>
+
+      <dt>Compliance</dt>
+      <dd>{{ application.compliance_status }}</dd>
+
+      <dt>Status</dt>
+      <dd>
+        <span class="badge status-{{ application.status|lower }}">{{ application.status }}</span>
+      </dd>
+
+      <dt>Scoring mode</dt>
+      <dd>
+        <span class="badge mode-{{ application.scoring_mode|lower }}">{{ application.scoring_mode }}</span>
+      </dd>
+
+      <dt>Created</dt>
+      <dd>{{ application.created_at }}</dd>
+
+      <dt>Updated</dt>
+      <dd>{{ application.updated_at }}</dd>
+    </dl>
+    <p class="muted">
+      All data below is loaded on-page via HTMX fragment requests. No
+      controls on this page mutate server state (mutations live in the
+      CLI / API surface).
+    </p>
+  </section>
+
+  <section class="panel" id="fragment-scores-panel">
+    <h2>Scoring jobs &amp; decision artifact</h2>
+    <div
+      id="scores-fragment-host"
+      hx-get="{{ admin_base }}/applications/{{ application.id }}/fragment/scores"
+      hx-trigger="load"
+      hx-swap="innerHTML"
+    >
+      <p class="fragment-empty">Loading scoring jobs fragment…</p>
+    </div>
+  </section>
+
+  <section class="panel" id="fragment-workflow-panel">
+    <h2>Workflow runs &amp; step history</h2>
+    <div
+      id="workflow-fragment-host"
+      hx-get="{{ admin_base }}/applications/{{ application.id }}/fragment/workflow"
+      hx-trigger="load"
+      hx-swap="innerHTML"
+    >
+      <p class="fragment-empty">Loading workflow fragment…</p>
+    </div>
+  </section>
+
+  <section class="panel" id="fragment-notifications-panel">
+    <h2>Notification log</h2>
+    <div
+      id="notifications-fragment-host"
+      hx-get="{{ admin_base }}/applications/{{ application.id }}/fragment/notifications"
+      hx-trigger="load"
+      hx-swap="innerHTML"
+    >
+      <p class="fragment-empty">Loading notifications fragment…</p>
+    </div>
+  </section>
+
+  <p class="muted">
+    <a href="{{ admin_base }}/applications">&larr; back to applications</a>
+  </p>
+{% endblock %}
+
+{#
+  The following blocks are NOT rendered on the full-page detail view
+  (Jinja only materialises blocks whose names exist in the parent
+  chain). They are instead rendered directly by the admin-UI router
+  via ``template.blocks["fragment_scores"](context)`` in response to
+  the HTMX ``hx-get`` fragment requests. Keeping them inside
+  ``application_detail.html`` lets us honour the prompt-19 SCOPE
+  (three templates only) while still producing proper server-rendered
+  HTML fragments for the admin dashboard.
+#}
+
+{% block fragment_scores %}<div id="scores-fragment" class="fragment">
+  {% if artifact %}
+  <h3 class="muted">Decision artifact (latest)</h3>
+  <dl class="kv-grid">
+    <dt>Decision</dt>
+    <dd>
+      <span class="badge status-{{ artifact.decision|lower }}">{{ artifact.decision }}</span>
+    </dd>
+    <dt>Policy version</dt>
+    <dd>{{ artifact.policy_version }}</dd>
+    <dt>Parameter set</dt>
+    <dd>{{ artifact.parameter_set_id }}</dd>
+    <dt>Threshold required</dt>
+    <dd>{{ "%.4f"|format(artifact.threshold_required) }}</dd>
+    <dt>Coherence observed</dt>
+    <dd>{{ "%.4f"|format(artifact.coherence_observed) }}</dd>
+    <dt>Margin</dt>
+    <dd>{{ "%.4f"|format(artifact.margin) }}</dd>
+    <dt>Failed gates</dt>
+    <dd class="mono">{{ artifact.failed_gates_json or "[]" }}</dd>
+  </dl>
+  {% else %}
+  <p class="fragment-empty">No decision artifact persisted yet.</p>
+  {% endif %}
+
+  <h3 class="muted">Scoring jobs</h3>
+  {% if scoring_jobs %}
+  <table id="scoring-jobs-table">
+    <thead>
+      <tr>
+        <th>Job ID</th>
+        <th>Mode</th>
+        <th>Status</th>
+        <th>Attempts</th>
+        <th>Started</th>
+        <th>Completed</th>
+        <th>Error</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for job in scoring_jobs %}
+      <tr data-scoring-job-id="{{ job.id }}">
+        <td class="mono">{{ job.id }}</td>
+        <td>
+          <span class="badge mode-{{ job.mode|lower }}">{{ job.mode }}</span>
+        </td>
+        <td>
+          <span class="badge status-{{ job.status|lower }}">{{ job.status }}</span>
+        </td>
+        <td>{{ job.attempts }} / {{ job.max_attempts }}</td>
+        <td class="mono">{{ job.started_at or "—" }}</td>
+        <td class="mono">{{ job.completed_at or "—" }}</td>
+        <td class="mono">{{ job.error_message or "" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="fragment-empty">No scoring jobs yet.</p>
+  {% endif %}
+</div>{% endblock %}
+
+{% block fragment_workflow %}<div id="workflow-fragment" class="fragment">
+  {% if workflow_runs %}
+  {% for run in workflow_runs %}
+  <div class="panel" data-workflow-run-id="{{ run.id }}">
+    <dl class="kv-grid">
+      <dt>Run ID</dt>
+      <dd>{{ run.id }}</dd>
+      <dt>Status</dt>
+      <dd>
+        <span class="badge status-{{ run.status|lower }}">{{ run.status }}</span>
+      </dd>
+      <dt>Current step</dt>
+      <dd class="mono">{{ run.current_step or "—" }}</dd>
+      <dt>Started</dt>
+      <dd class="mono">{{ run.started_at or "—" }}</dd>
+      <dt>Finished</dt>
+      <dd class="mono">{{ run.finished_at or "—" }}</dd>
+      <dt>Error</dt>
+      <dd class="mono">{{ run.error or "" }}</dd>
+    </dl>
+
+    {% if run.steps %}
+    <table class="workflow-steps-table">
+      <thead>
+        <tr>
+          <th>Step</th>
+          <th>Status</th>
+          <th>Started</th>
+          <th>Finished</th>
+          <th>Input digest</th>
+          <th>Output digest</th>
+          <th>Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for step in run.steps %}
+        <tr data-workflow-step-name="{{ step.name }}">
+          <td class="mono">{{ step.name }}</td>
+          <td>
+            <span class="badge status-{{ step.status|lower }}">{{ step.status }}</span>
+          </td>
+          <td class="mono">{{ step.started_at or "—" }}</td>
+          <td class="mono">{{ step.finished_at or "—" }}</td>
+          <td class="mono">{{ step.input_digest or "" }}</td>
+          <td class="mono">{{ step.output_digest or "" }}</td>
+          <td class="mono">{{ step.error or "" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="fragment-empty">No step checkpoints recorded for this run.</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% else %}
+  <p class="fragment-empty">No workflow runs yet.</p>
+  {% endif %}
+</div>{% endblock %}
+
+{% block fragment_notifications %}<div id="notifications-fragment" class="fragment">
+  {% if notifications %}
+  <table id="notifications-table">
+    <thead>
+      <tr>
+        <th>Log ID</th>
+        <th>Template</th>
+        <th>Channel</th>
+        <th>Recipient</th>
+        <th>Status</th>
+        <th>Created</th>
+        <th>Sent</th>
+        <th>Error</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for log in notifications %}
+      <tr data-notification-log-id="{{ log.id }}">
+        <td class="mono">{{ log.id }}</td>
+        <td class="mono">{{ log.template_id }}</td>
+        <td>{{ log.channel }}</td>
+        <td>{{ log.recipient or "—" }}</td>
+        <td>
+          <span class="badge status-{{ log.status|lower }}">{{ log.status }}</span>
+        </td>
+        <td class="mono">{{ log.created_at or "—" }}</td>
+        <td class="mono">{{ log.sent_at or "—" }}</td>
+        <td class="mono">{{ log.error or "" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="fragment-empty">No notifications dispatched yet.</p>
+  {% endif %}
+</div>{% endblock %}

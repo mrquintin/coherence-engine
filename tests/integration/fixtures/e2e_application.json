@@ -1,0 +1,20 @@
+{
+  "founder": {
+    "id": "fnd_e2e_reproduce",
+    "full_name": "Riley E2E Founder",
+    "email": "riley@e2e-reproducibility.test",
+    "company_name": "Reproducible Labs, Inc.",
+    "country": "US"
+  },
+  "application": {
+    "id_seed": "e2e_reproduce",
+    "one_liner": "Deterministic reproducibility tooling for ML-driven finance workflows.",
+    "requested_check_usd": 150000,
+    "use_of_funds_summary": "Hire two engineers, ship the reproducibility harness, run six pilot deployments across banking and healthcare customers.",
+    "preferred_channel": "web_voice",
+    "domain_primary": "market_economics",
+    "compliance_status": "clear",
+    "scoring_mode": "enforce"
+  },
+  "fixture_purpose": "Offline end-to-end reproducibility integration test (prompt 16). This founder/application pair is driven through the workflow orchestrator twice with identical inputs; the decision_artifact bytes from the two runs must match after excluding fields that legitimately vary per run (application_id, session_id, occurred_at, artifact_id). Do NOT edit without also updating tests/integration/test_e2e_pipeline.py."
+}

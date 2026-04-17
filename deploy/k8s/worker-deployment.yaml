@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coherence-fund-worker
+  namespace: coherence-fund
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: coherence-fund-worker
+  template:
+    metadata:
+      labels:
+        app: coherence-fund-worker
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/your-org/coherence-engine:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -lc
+            - >
+              python -m coherence_engine dispatch-outbox
+              --backend "${COHERENCE_FUND_OUTBOX_BACKEND}"
+              --run-mode loop
+              --batch-size 200
+              --poll-seconds 2
+              --topic-prefix "${COHERENCE_FUND_TOPIC_PREFIX}"
+              --kafka-bootstrap-servers "${KAFKA_BOOTSTRAP_SERVERS}"
+              --sqs-queue-url "${SQS_QUEUE_URL}"
+              --sqs-region "${AWS_REGION}"
+              --redis-url "${REDIS_URL}"
+          envFrom:
+            - configMapRef:
+                name: coherence-fund-config
+            - secretRef:
+                name: coherence-fund-secrets
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -lc
+                - >
+                  python -m coherence_engine.server.fund.worker_healthcheck
+                  --backend "${COHERENCE_FUND_OUTBOX_BACKEND}"
+                  --kafka-bootstrap-servers "${KAFKA_BOOTSTRAP_SERVERS}"
+                  --sqs-queue-url "${SQS_QUEUE_URL}"
+                  --sqs-region "${AWS_REGION}"
+                  --redis-url "${REDIS_URL}"
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -lc
+                - >
+                  python -m coherence_engine.server.fund.worker_healthcheck
+                  --backend "${COHERENCE_FUND_OUTBOX_BACKEND}"
+                  --kafka-bootstrap-servers "${KAFKA_BOOTSTRAP_SERVERS}"
+                  --sqs-queue-url "${SQS_QUEUE_URL}"
+                  --sqs-region "${AWS_REGION}"
+                  --redis-url "${REDIS_URL}"
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+

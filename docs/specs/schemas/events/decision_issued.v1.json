@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coherence.engine/specs/schemas/events/decision_issued.v1.json",
+  "title": "DecisionIssuedPayloadV1",
+  "type": "object",
+  "required": [
+    "application_id",
+    "decision_id",
+    "decision",
+    "threshold_required",
+    "coherence_observed",
+    "margin",
+    "failed_gates",
+    "policy_version",
+    "parameter_set_id"
+  ],
+  "properties": {
+    "application_id": {"type": "string", "minLength": 1},
+    "decision_id": {"type": "string", "minLength": 1},
+    "decision": {"type": "string", "enum": ["pass", "fail", "manual_review"]},
+    "threshold_required": {"type": "number"},
+    "coherence_observed": {"type": "number"},
+    "margin": {"type": "number"},
+    "failed_gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["gate", "reason_code"],
+        "properties": {
+          "gate": {"type": "string", "minLength": 1},
+          "reason_code": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
+    },
+    "policy_version": {"type": "string", "minLength": 1},
+    "parameter_set_id": {"type": "string", "minLength": 1}
+  },
+  "additionalProperties": false
+}
+

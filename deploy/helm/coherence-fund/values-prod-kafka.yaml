@@ -1,0 +1,12 @@
+env:
+  COHERENCE_FUND_OUTBOX_BACKEND: "kafka"
+
+secretEnv:
+  KAFKA_BOOTSTRAP_SERVERS: "kafka-brokers.kafka.svc.cluster.local:9092"
+  REDIS_URL: ""
+  SQS_QUEUE_URL: ""
+
+worker:
+  batchSize: 500
+  pollSeconds: 1
+

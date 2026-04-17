@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coherence-engine/events/interview_completed/v1",
+  "title": "InterviewCompletedV1",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_name",
+    "schema_version",
+    "occurred_at",
+    "application_id",
+    "session_id",
+    "transcript_ref",
+    "duration_s",
+    "asr_confidence_avg"
+  ],
+  "properties": {
+    "event_id": {"type": "string", "format": "uuid"},
+    "event_name": {"type": "string", "const": "interview_completed"},
+    "schema_version": {"type": "integer", "const": 1},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "application_id": {"type": "string", "minLength": 1},
+    "session_id": {"type": "string", "minLength": 1},
+    "transcript_ref": {"type": "string", "minLength": 1},
+    "duration_s": {"type": "number", "minimum": 0},
+    "asr_confidence_avg": {"type": "number", "minimum": 0, "maximum": 1},
+    "founder_id": {"type": "string", "minLength": 1},
+    "interview_id": {"type": "string", "minLength": 1},
+    "channel": {"type": "string", "minLength": 1},
+    "duration_seconds": {"type": "number", "minimum": 0},
+    "sections_covered": {"type": "array", "items": {"type": "string"}},
+    "transcript_uri": {"type": "string", "minLength": 1},
+    "audio_uri": {"type": "string", "minLength": 1},
+    "transcript_quality_score": {"type": "number", "minimum": 0, "maximum": 1},
+    "consent_status": {"type": "string", "minLength": 1},
+    "language": {"type": "string", "minLength": 2}
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "event_id": "11111111-1111-4111-8111-111111111111",
+      "event_name": "interview_completed",
+      "schema_version": 1,
+      "occurred_at": "2026-04-16T12:00:00Z",
+      "application_id": "app_abc123",
+      "session_id": "ivw_abc123",
+      "transcript_ref": "s3://bucket/transcripts/ivw_abc123.json",
+      "duration_s": 843,
+      "asr_confidence_avg": 0.92
+    }
+  ]
+}

@@ -1,0 +1,212 @@
+name: Deploy Preflight Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment_profile:
+        description: "Secret manager provider profile for deploy gate"
+        required: true
+        default: aws
+        type: choice
+        options:
+          - aws
+          - gcp
+          - vault
+      bootstrap_secret_ref:
+        description: "Bootstrap admin secret reference used for reachability probe"
+        required: true
+        type: string
+      strict_policy:
+        description: "Enable strict provider credential policy"
+        required: false
+        default: true
+        type: boolean
+      allow_static_credentials:
+        description: "Allow static credentials (normally false; only if required)"
+        required: false
+        default: false
+        type: boolean
+      aws_region:
+        description: "AWS region (used when profile=aws)"
+        required: false
+        default: us-east-1
+        type: string
+      aws_role_to_assume:
+        description: "Optional AWS role ARN for OIDC auth"
+        required: false
+        type: string
+      gcp_workload_identity_provider:
+        description: "Optional GCP workload identity provider resource name"
+        required: false
+        type: string
+      gcp_service_account:
+        description: "Optional GCP service account email"
+        required: false
+        type: string
+      vault_addr:
+        description: "Vault HTTPS address (used when profile=vault)"
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      environment_profile:
+        required: true
+        type: string
+      bootstrap_secret_ref:
+        required: true
+        type: string
+      strict_policy:
+        required: false
+        default: true
+        type: boolean
+      allow_static_credentials:
+        required: false
+        default: false
+        type: boolean
+      aws_region:
+        required: false
+        default: us-east-1
+        type: string
+      aws_role_to_assume:
+        required: false
+        type: string
+      gcp_workload_identity_provider:
+        required: false
+        type: string
+      gcp_service_account:
+        required: false
+        type: string
+      vault_addr:
+        required: false
+        type: string
+    secrets:
+      VAULT_TOKEN:
+        required: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  preflight:
+    name: Preflight (${{ inputs.environment_profile }})
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,fund-workers]"
+
+      - name: Configure AWS credentials (optional OIDC)
+        if: ${{ inputs.environment_profile == 'aws' && inputs.aws_role_to_assume != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.aws_role_to_assume }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Configure GCP credentials (optional WIF)
+        if: ${{ inputs.environment_profile == 'gcp' && inputs.gcp_workload_identity_provider != '' && inputs.gcp_service_account != '' }}
+        id: gcp_auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ inputs.gcp_workload_identity_provider }}
+          service_account: ${{ inputs.gcp_service_account }}
+          token_format: access_token
+
+      - name: Export preflight environment
+        run: |
+          echo "COHERENCE_FUND_AUTH_MODE=db" >> "$GITHUB_ENV"
+          echo "COHERENCE_FUND_BOOTSTRAP_ADMIN_ENABLED=true" >> "$GITHUB_ENV"
+          echo "COHERENCE_FUND_BOOTSTRAP_ADMIN_SECRET_REF=${{ inputs.bootstrap_secret_ref }}" >> "$GITHUB_ENV"
+          echo "COHERENCE_FUND_SECRET_MANAGER_PROVIDER=${{ inputs.environment_profile }}" >> "$GITHUB_ENV"
+          echo "COHERENCE_FUND_SECRET_MANAGER_STRICT_POLICY=${{ inputs.strict_policy }}" >> "$GITHUB_ENV"
+          echo "COHERENCE_FUND_SECRET_MANAGER_ALLOW_STATIC_CREDENTIALS=${{ inputs.allow_static_credentials }}" >> "$GITHUB_ENV"
+          echo "COHERENCE_FUND_AWS_REGION=${{ inputs.aws_region }}" >> "$GITHUB_ENV"
+          if [ "${{ inputs.environment_profile }}" = "gcp" ] && [ -n "${{ steps.gcp_auth.outputs.access_token }}" ]; then
+            echo "COHERENCE_FUND_GCP_ACCESS_TOKEN=${{ steps.gcp_auth.outputs.access_token }}" >> "$GITHUB_ENV"
+          fi
+          if [ "${{ inputs.environment_profile }}" = "vault" ]; then
+            echo "COHERENCE_FUND_VAULT_ADDR=${{ inputs.vault_addr }}" >> "$GITHUB_ENV"
+            echo "COHERENCE_FUND_VAULT_TOKEN=${{ secrets.VAULT_TOKEN }}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Validate profile inputs
+        run: |
+          case "${{ inputs.environment_profile }}" in
+            aws)
+              if [ -z "${{ inputs.bootstrap_secret_ref }}" ]; then
+                echo "bootstrap_secret_ref is required for aws profile" >&2
+                exit 1
+              fi
+              ;;
+            gcp)
+              if [ -z "${{ inputs.bootstrap_secret_ref }}" ]; then
+                echo "bootstrap_secret_ref is required for gcp profile" >&2
+                exit 1
+              fi
+              ;;
+            vault)
+              if [ -z "${{ inputs.vault_addr }}" ]; then
+                echo "vault_addr is required for vault profile" >&2
+                exit 1
+              fi
+              if [ -z "${{ secrets.VAULT_TOKEN }}" ]; then
+                echo "VAULT_TOKEN secret is required for vault profile" >&2
+                exit 1
+              fi
+              ;;
+            *)
+              echo "unsupported environment_profile: ${{ inputs.environment_profile }}" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Required deploy gate (must pass)
+        run: make preflight-secret-manager
+
+  preflight-failure-signal:
+    name: Preflight failure alert signal
+    runs-on: ubuntu-latest
+    needs: [preflight]
+    if: ${{ always() && needs.preflight.result == 'failure' }}
+    steps:
+      - name: Annotate workflow with alert tag
+        run: |
+          echo "::error title=Coherence deploy preflight failed::COHERENCE_DEPLOY_PREFLIGHT_FAILED profile=${{ inputs.environment_profile }} — inspect the preflight job logs"
+      - name: Job summary
+        run: |
+          echo "## Coherence deploy preflight gate" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Result:** FAILED" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Profile:** ${{ inputs.environment_profile }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Alert tag:** \`COHERENCE_DEPLOY_PREFLIGHT_FAILED\` (use for monitors/webhooks)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Write alert artifact
+        env:
+          PROFILE: ${{ inputs.environment_profile }}
+        run: |
+          mkdir -p alert-out
+          python3 -c "import json,os; p={'alert':'COHERENCE_DEPLOY_PREFLIGHT_FAILED','profile':os.environ['PROFILE'],'workflow':'deploy-preflight-gate','github_run_url':f\"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}\"}; open('alert-out/preflight-alert.json','w').write(json.dumps(p))"
+      - name: Upload preflight alert artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coherence-deploy-preflight-alert
+          path: alert-out/preflight-alert.json
+
+  release:
+    name: Release (gated)
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: ${{ always() && needs.preflight.result == 'success' }}
+    steps:
+      - name: Release gate passed
+        run: |
+          echo "Secret-manager preflight gate passed for profile=${{ inputs.environment_profile }}."
+          echo "Place release/deploy commands after this gate in your pipeline."
+

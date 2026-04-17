@@ -1,0 +1,56 @@
+{
+  "session_id": "ivw_low_quality_01",
+  "language": "en-US",
+  "asr_model": "stub-asr-1",
+  "turns": [
+    {
+      "speaker": "founder",
+      "text": "Our product normalizes lab results across clinics.",
+      "confidence": 0.2,
+      "start_s": 0.0,
+      "end_s": 5.0
+    },
+    {
+      "speaker": "founder",
+      "text": "We ran a pilot with three clinics last quarter.",
+      "confidence": 0.3,
+      "start_s": 5.0,
+      "end_s": 10.0
+    },
+    {
+      "speaker": "founder",
+      "text": "The market opportunity is very large.",
+      "confidence": 0.1,
+      "start_s": 10.0,
+      "end_s": 15.0
+    },
+    {
+      "speaker": "founder",
+      "text": "Integration timelines remain our main risk. Switching costs are high once wired in.",
+      "confidence": 0.82,
+      "start_s": 15.0,
+      "end_s": 25.0
+    },
+    {
+      "speaker": "founder",
+      "text": "Our team has shipped milestone one on schedule.",
+      "confidence": 0.4,
+      "start_s": 25.0,
+      "end_s": 30.0
+    },
+    {
+      "speaker": "interviewer",
+      "text": "Can you tell me more?",
+      "confidence": 0.95,
+      "start_s": 30.0,
+      "end_s": 32.0
+    },
+    {
+      "speaker": "founder",
+      "text": "We have a defensible moat from network effects.",
+      "confidence": 0.49,
+      "start_s": 32.0,
+      "end_s": 37.0
+    }
+  ]
+}

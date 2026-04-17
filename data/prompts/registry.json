@@ -1,0 +1,21 @@
+{
+  "schema_version": "prompt-registry-v1",
+  "prompts": [
+    {
+      "id": "interview_opening",
+      "version": "1.0.0",
+      "status": "prod",
+      "body_path": "data/prompts/bodies/interview_opening.v1.md",
+      "content_sha256": "017f31995fb9f3a3c47de9187c8a4cc7d6aa696411f08d30162c6517ea18f5f9",
+      "owner": "fund-ops"
+    },
+    {
+      "id": "self_critique",
+      "version": "1.0.0",
+      "status": "prod",
+      "body_path": "data/prompts/bodies/self_critique.v1.md",
+      "content_sha256": "d1eb44d5394b15cc2cfff384c917ba3222a28d68281348ff8a91cf0a05d7cb4d",
+      "owner": "fund-ops"
+    }
+  ]
+}

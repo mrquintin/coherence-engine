@@ -1,0 +1,12 @@
+{
+  "schema_version": "anti-gaming-fixture-v1",
+  "notes": "Propositions are near-identical paraphrases — mean pairwise TF-IDF cosine above 0.85. Should trigger AG_REPETITIVE_FILLER.",
+  "propositions": [
+    {"id": "p1", "text": "Our scalable platform delivers scalable outcomes for scalable enterprise customers today.", "prop_type": "premise"},
+    {"id": "p2", "text": "Our scalable platform delivers scalable outcomes for scalable enterprise customers tomorrow.", "prop_type": "premise"},
+    {"id": "p3", "text": "Our scalable platform delivers scalable outcomes for scalable enterprise customers worldwide.", "prop_type": "premise"},
+    {"id": "p4", "text": "Our scalable platform delivers scalable outcomes for scalable enterprise customers everywhere.", "prop_type": "claim"}
+  ],
+  "prior_corpus": [],
+  "templates": []
+}

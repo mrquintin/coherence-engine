@@ -1,0 +1,32 @@
+# Scheduled + manual verification that the governed uncertainty policy file matches
+# per-environment SHA256 baselines from a private baselines document.
+#
+# Hosted runners: store the full JSON in GitHub Environment secret
+# UNCERTAINTY_GOVERNANCE_POLICY_BASELINES_JSON on environment
+# "uncertainty-governance-baseline-verification" (job-level environment below).
+# Repository/org variables are not used for baselines — configure the environment secret.
+# Use environment protection (required reviewers) on that environment for reviewer governance.
+#
+# Copy deploy/ops/uncertainty-governance-policy-baselines.example.json as a template locally;
+# pass --baselines to deploy/scripts/verify_uncertainty_policy_baselines.py for deterministic local runs.
+# No external network beyond checkout / Python setup.
+
+name: Uncertainty policy governance verification
+
+on:
+  schedule:
+    - cron: "30 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-policy-baselines:
+    name: Verify governance policy baselines (environment pins)
+    uses: ./.github/workflows/reusable-governance-attestation-check.yml
+    with:
+      check_kind: baseline_verify
+      governance_environment_slug: uncertainty-governance-baseline-verification
+    secrets: inherit
+    environment: uncertainty-governance-baseline-verification

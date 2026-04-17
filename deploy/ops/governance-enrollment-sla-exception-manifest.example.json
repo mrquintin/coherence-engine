@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "description": "Repositories allowed to be absent from trend aggregate inputs when cross-repo enrollment is enforced. Copy to private path or inject via GOVERNANCE_ENROLLMENT_SLA_EXCEPTION_MANIFEST_JSON secret.",
+  "allowed_missing_repositories": [],
+  "reason_by_repository": {}
+}

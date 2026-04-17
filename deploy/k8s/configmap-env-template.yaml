@@ -1,0 +1,48 @@
+# Non-secret configuration. Per-environment provider alignment:
+#   aws:   COHERENCE_FUND_SECRET_MANAGER_PROVIDER=aws + COHERENCE_FUND_AWS_REGION (+ IAM via service account / IRSA)
+#   gcp:   provider=gcp + workload identity on the Pod SA, or inject COHERENCE_FUND_GCP_ACCESS_TOKEN via Secret for jobs only
+#   vault: provider=vault — set COHERENCE_FUND_VAULT_ADDR and token via Secret (see secret-template.yaml), not this ConfigMap
+# Webhook URLs/tokens for COHERENCE_FUND_OPS_ALERT_* belong in a Secret, not ConfigMap.
+# Per-environment on-call routing (PagerDuty / Opsgenie / Alertmanager receiver names, escalation IDs) is
+# tracked in a separate policy JSON; see deploy/ops/oncall-route-policy.example.json and
+# deploy/scripts/verify_oncall_route_policy.py (local verification only).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coherence-fund-config
+  namespace: coherence-fund
+data:
+  COHERENCE_FUND_AUTO_CREATE_TABLES: "false"
+  COHERENCE_FUND_SERVICE_NAME: "fund-orchestrator-api"
+  COHERENCE_FUND_SERVICE_VERSION: "0.2.0"
+  COHERENCE_FUND_TOPIC_PREFIX: "coherence.fund"
+  COHERENCE_FUND_OUTBOX_BACKEND: "redis" # kafka|sqs|redis
+  AWS_REGION: "us-east-1"
+  COHERENCE_FUND_AUTH_MODE: "db"
+  COHERENCE_FUND_RATE_LIMIT_ENABLED: "true"
+  COHERENCE_FUND_RATE_LIMIT_REQUESTS: "120"
+  COHERENCE_FUND_RATE_LIMIT_WINDOW_SECONDS: "60"
+  COHERENCE_FUND_BOOTSTRAP_ADMIN_ENABLED: "true"
+  COHERENCE_FUND_BOOTSTRAP_ADMIN_SECRET_REF: "coherence/fund/bootstrap-admin"
+  COHERENCE_FUND_BOOTSTRAP_ADMIN_CACHE_SECONDS: "30"
+  COHERENCE_FUND_SECRET_MANAGER_PROVIDER: "aws" # aws|gcp|vault
+  COHERENCE_FUND_SECRET_MANAGER_TIMEOUT_SECONDS: "5"
+  COHERENCE_FUND_SECRET_MANAGER_TOKEN_FIELD: "token"
+  COHERENCE_FUND_SECRET_MANAGER_STRICT_POLICY: "true"
+  COHERENCE_FUND_SECRET_MANAGER_STARTUP_ENFORCE: "true"
+  COHERENCE_FUND_SECRET_MANAGER_ALLOW_STATIC_CREDENTIALS: "false"
+  COHERENCE_FUND_AWS_REGION: "us-east-1"
+  # Worker ops thresholds: "0" disables in-process warnings (safe default). Tune per docs/ops/slo_threshold_standards.md.
+  COHERENCE_FUND_OUTBOX_OPS_QUEUE_WARN_DEPTH: "0"
+  COHERENCE_FUND_OUTBOX_OPS_OLDEST_WARN_SECONDS: "0"
+  COHERENCE_FUND_OUTBOX_OPS_FAILED_DLQ_WARN_COUNT: "0"
+  COHERENCE_FUND_SCORING_OPS_QUEUE_WARN_DEPTH: "0"
+  COHERENCE_FUND_SCORING_OPS_OLDEST_WARN_SECONDS: "0"
+  COHERENCE_FUND_SCORING_OPS_FAILED_DLQ_WARN_COUNT: "0"
+  # Optional in-process alert routing from worker warn snapshots.
+  COHERENCE_FUND_OPS_ALERT_ROUTER_MODE: "none" # none|file|webhook
+  COHERENCE_FUND_OPS_ALERT_WEBHOOK_TIMEOUT_SECONDS: "5"
+  COHERENCE_FUND_OPS_ALERT_COOLDOWN_SECONDS: "300"
+  COHERENCE_FUND_OPS_ALERT_DEDUPE_KEY: "component_tags" # component|component_tags|payload_hash
+  COHERENCE_FUND_OPS_ALERT_SEVERITY_MAP: "{}" # JSON object, e.g. {"failed_dlq":"critical"}
+

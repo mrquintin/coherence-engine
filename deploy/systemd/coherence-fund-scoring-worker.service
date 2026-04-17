@@ -1,0 +1,26 @@
+[Unit]
+Description=Coherence Fund Scoring Queue Worker
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=coherence
+Group=coherence
+WorkingDirectory=/opt/coherence_engine
+EnvironmentFile=/etc/default/coherence-fund
+ExecStart=/bin/bash -lc '/opt/coherence_engine/venv/bin/python -m coherence_engine process-scoring-jobs --run-mode loop --max-jobs 100 --poll-seconds 2 --lease-seconds 120 --retry-base-seconds 5'
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillMode=mixed
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/coherence_engine
+
+[Install]
+WantedBy=multi-user.target

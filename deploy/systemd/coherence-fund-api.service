@@ -1,0 +1,27 @@
+[Unit]
+Description=Coherence Fund API
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=coherence
+Group=coherence
+WorkingDirectory=/opt/coherence_engine
+EnvironmentFile=/etc/default/coherence-fund
+ExecStart=/opt/coherence_engine/venv/bin/python -m coherence_engine serve-fund --host 0.0.0.0 --port 8010
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillMode=mixed
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/coherence_engine
+
+[Install]
+WantedBy=multi-user.target
+

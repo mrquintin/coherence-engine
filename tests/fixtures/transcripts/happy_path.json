@@ -1,0 +1,77 @@
+{
+  "session_id": "ivw_happy_01",
+  "language": "en-US",
+  "asr_model": "stub-asr-1",
+  "turns": [
+    {
+      "speaker": "interviewer",
+      "text": "Can you describe the problem you're solving?",
+      "confidence": 0.95,
+      "start_s": 0.0,
+      "end_s": 3.0
+    },
+    {
+      "speaker": "founder",
+      "text": "Our product normalizes lab results across clinics. Small clinics struggle to reconcile HL7 feeds today.",
+      "confidence": 0.9,
+      "start_s": 3.0,
+      "end_s": 10.5
+    },
+    {
+      "speaker": "interviewer",
+      "text": "What's your evidence?",
+      "confidence": 0.92,
+      "start_s": 10.5,
+      "end_s": 12.0
+    },
+    {
+      "speaker": "founder",
+      "text": "We ran a pilot with three clinics last quarter. The numbers show a 40% reduction in reconciliation time.",
+      "confidence": 0.88,
+      "start_s": 12.0,
+      "end_s": 20.0
+    },
+    {
+      "speaker": "interviewer",
+      "text": "Tell me about the market.",
+      "confidence": 0.94,
+      "start_s": 20.0,
+      "end_s": 22.0
+    },
+    {
+      "speaker": "founder",
+      "text": "The market is large with a clearly addressable segment. Switching costs are high once wired in.",
+      "confidence": 0.87,
+      "start_s": 22.0,
+      "end_s": 30.0
+    },
+    {
+      "speaker": "interviewer",
+      "text": "What about risks?",
+      "confidence": 0.9,
+      "start_s": 30.0,
+      "end_s": 31.5
+    },
+    {
+      "speaker": "founder",
+      "text": "Integration timelines remain our main risk. Our team has shipped milestone one on schedule.",
+      "confidence": 0.85,
+      "start_s": 31.5,
+      "end_s": 40.0
+    },
+    {
+      "speaker": "interviewer",
+      "text": "Anything to add?",
+      "confidence": 0.91,
+      "start_s": 40.0,
+      "end_s": 41.0
+    },
+    {
+      "speaker": "founder",
+      "text": "Our product normalizes lab results across clinics. We have a defensible moat from network effects.",
+      "confidence": 0.86,
+      "start_s": 41.0,
+      "end_s": 50.0
+    }
+  ]
+}

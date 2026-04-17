@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "coherence-engine"
+version = "0.1.2"
+description = "Measure the internal logical coherence of any text on a 0-1 scale."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [{name = "Michael"}]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Text Processing :: Linguistic",
+]
+
+[project.optional-dependencies]
+ml = ["sentence-transformers>=2.2.0", "numpy>=1.21.0"]
+full = [
+    "sentence-transformers>=2.2.0",
+    "transformers>=4.30.0",
+    "torch>=2.0.0",
+    "numpy>=1.21.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "sqlalchemy>=2.0.0",
+    "psycopg[binary]>=3.1.0",
+    "jsonschema>=4.0.0",
+    "email-validator>=2.0.0",
+    "alembic>=1.0.0",
+]
+fund-workers = [
+    "confluent-kafka>=2.0.0",
+    "boto3>=1.0.0",
+    "redis>=5.0.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.scripts]
+coherence-engine = "coherence_engine.cli:main"
+
+[project.gui-scripts]
+coherence-engine-gui = "coherence_engine.gui:main"
+
+[project.urls]
+Homepage = "https://github.com/michaelquintin/coherence-engine"
+
+[tool.setuptools.packages.find]
+include = ["coherence_engine*"]
+
+[tool.setuptools.package-data]
+"coherence_engine.data" = ["*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+# Repo folder is named ``coherence_engine``; package root lives there, so parent must be on path.
+pythonpath = [".."]
+markers = [
+    "cloud_integration: tests that require live cloud/Vault credentials and staging-reachable providers",
+    "e2e: end-to-end pipeline reproducibility integration tests (offline, default suite)",
+]

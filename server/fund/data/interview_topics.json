@@ -1,0 +1,65 @@
+{
+  "problem": [
+    "problem",
+    "pain point",
+    "customer issue",
+    "unmet need",
+    "frustration"
+  ],
+  "solution_mechanism": [
+    "solution",
+    "how it works",
+    "mechanism",
+    "approach",
+    "we build",
+    "we provide"
+  ],
+  "evidence": [
+    "evidence",
+    "data",
+    "study",
+    "benchmark",
+    "pilot",
+    "experiment",
+    "validation",
+    "case study"
+  ],
+  "market": [
+    "market",
+    "tam",
+    "sam",
+    "som",
+    "addressable market",
+    "segment",
+    "demand"
+  ],
+  "moat": [
+    "moat",
+    "defensibility",
+    "barrier to entry",
+    "competitive advantage",
+    "network effect",
+    "switching cost",
+    "proprietary"
+  ],
+  "execution": [
+    "execution",
+    "milestone",
+    "roadmap",
+    "team",
+    "shipped",
+    "delivered",
+    "deadline",
+    "timeline"
+  ],
+  "self_critique": [
+    "weakness",
+    "risk",
+    "tradeoff",
+    "limitation",
+    "what could go wrong",
+    "challenge",
+    "concern",
+    "downside"
+  ]
+}

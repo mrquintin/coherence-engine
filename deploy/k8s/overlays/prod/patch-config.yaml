@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coherence-fund-config
+data:
+  COHERENCE_FUND_AUTO_CREATE_TABLES: "false"
+  COHERENCE_FUND_SERVICE_NAME: "fund-orchestrator-api-prod"
+  COHERENCE_FUND_SERVICE_VERSION: "0.2.0"
+  COHERENCE_FUND_TOPIC_PREFIX: "coherence.fund.prod"
+  COHERENCE_FUND_OUTBOX_BACKEND: "kafka"
+  AWS_REGION: "us-east-1"
+

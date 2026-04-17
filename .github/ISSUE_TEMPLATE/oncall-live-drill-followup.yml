@@ -1,0 +1,70 @@
+name: On-call live drill follow-up
+description: Close out an on-call route verification live drill (staging or production); links CI artifacts to tracked work.
+title: "[oncall-drill] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **When to use:** After a **live** webhook drill from `oncall-route-verification.yml`, or when closing gaps found during the safe verification bundle.
+
+        **Hook from CI checklist:** The generated artifact **`oncall-incident-followup-checklist.md`** (in **`oncall-release-readiness`**) ends with **Ticket / issue automation hook** — those checkboxes point here. Copy delivery, noise, and policy notes from that file into this issue.
+
+        **Pre-filled bodies (same artifact bundle):** Each workflow run also writes environment-specific files you can paste into GitHub or an external tracker: **`oncall-live-drill-followup-staging.md`** / **`oncall-live-drill-followup-production.md`**, plus JSON ticket templates **`oncall-ticket-payload-staging.json`** / **`oncall-ticket-payload-production.json`**. Optional repository variables **`ONCALL_TRACKER_STAGING_PROJECT`**, **`ONCALL_TRACKER_PRODUCTION_PROJECT`**, **`ONCALL_TRACKER_STAGING_LABELS`**, **`ONCALL_TRACKER_PRODUCTION_LABELS`** (comma-separated labels) tune project keys and labels in those outputs.
+
+        **How to open this form:** Repository **Issues** → **New issue** → **On-call live drill follow-up** (template file `.github/ISSUE_TEMPLATE/oncall-live-drill-followup.yml`).
+
+        **Env-specific closure:** `docs/ops/runbooks/live_drill_staging.md` (non-prod) · `docs/ops/runbooks/live_drill_prod.md` (production) · overview `docs/ops/runbooks/production_observability_rollout.md`
+
+        **Artifacts:** `oncall-release-readiness` (checklist, `oncall-drill-evidence.jsonl`, summaries) and `oncall-live-webhook-drill` (`oncall-live-webhook-drill.json`) when the live job ran.
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      description: Which routing surface was exercised?
+      options:
+        - staging
+        - production
+    validations:
+      required: true
+
+  - type: input
+    id: workflow_run_url
+    attributes:
+      label: GitHub Actions workflow run URL
+      description: Link to the On-call route verification run (required for audit).
+      placeholder: https://github.com/ORG/REPO/actions/runs/...
+    validations:
+      required: true
+
+  - type: textarea
+    id: delivery_confirmation
+    attributes:
+      label: Delivery and acknowledgment
+      description: Who received the drill, channel/service name, ack time vs SLO, and whether the payload matched expectations (drill flag, warn tags).
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Closure checklist (mirror artifact checklist)
+      description: Check all that apply for this drill.
+      options:
+        - label: Primary/secondary escalation paths match on-call policy for this environment
+          required: false
+        - label: False positive / noise reviewed (or N/A); tracking link added below if needed
+          required: false
+        - label: Policy JSON or rotation/ownership metadata updated if required; verifier re-run locally or in CI
+          required: false
+        - label: Evidence attached or linked (`oncall-drill-evidence.jsonl`, `oncall-live-webhook-drill.json` if present)
+          required: false
+
+  - type: textarea
+    id: tickets_and_links
+    attributes:
+      label: Related tickets / PRs
+      description: Links to routing fixes, governance PRs, or incident tool records.
+    validations:
+      required: false

@@ -1,0 +1,10 @@
+{
+  "id": "coh_003_governance_pilot",
+  "category": "coherent_evidenced",
+  "one_liner": "Civic Beacon shortens permitting cycle time for small municipalities through a structured intake and routing system.",
+  "use_of_funds_summary": "Productionize the routing engine and onboard four additional municipal pilots over 12 months.",
+  "requested_check_usd": 300000,
+  "domain_primary": "governance",
+  "compliance_status": "clear",
+  "transcript_text": "Civic Beacon is a permitting workflow system for small and mid-size municipalities. We have deployed the system in three pilot municipalities ranging from 12,000 to 48,000 residents over the last 14 months. Across the three pilots, median permit cycle time fell from 27 business days to 14 business days, a 48 percent reduction. We measured this by comparing 612 permit applications submitted before deployment against 587 applications submitted after deployment, controlled for permit category. Each pilot pays a 4,800 dollar annual subscription per 10,000 residents. Two of three pilots have signed a 24-month renewal. Our gross margin per municipality at the current pricing is 71 percent based on Q3 hosting and support costs. The 300,000 dollar check funds productionizing the routing engine and onboarding four additional municipal pilots over 12 months. The team includes a former municipal CIO and two senior engineers with prior experience shipping government workflow software. Regulatory considerations are limited to standard municipal data-handling requirements; we have completed third-party SOC 2 readiness assessment."
+}

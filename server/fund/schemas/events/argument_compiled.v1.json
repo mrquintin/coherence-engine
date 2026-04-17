@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coherence-engine/events/argument_compiled/v1",
+  "title": "ArgumentCompiledV1",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_name",
+    "schema_version",
+    "occurred_at",
+    "application_id",
+    "argument_graph_ref",
+    "n_propositions",
+    "n_relations"
+  ],
+  "properties": {
+    "event_id": {"type": "string", "format": "uuid"},
+    "event_name": {"type": "string", "const": "argument_compiled"},
+    "schema_version": {"type": "integer", "const": 1},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "application_id": {"type": "string", "minLength": 1},
+    "argument_graph_ref": {"type": "string", "minLength": 1},
+    "n_propositions": {"type": "integer", "minimum": 0},
+    "n_relations": {"type": "integer", "minimum": 0},
+    "argument_id": {"type": "string", "minLength": 1},
+    "propositions_uri": {"type": "string", "minLength": 1},
+    "relations_uri": {"type": "string", "minLength": 1},
+    "compiler_version": {"type": "string", "minLength": 1},
+    "quality_flags": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "count"],
+        "properties": {
+          "code": {"type": "string", "minLength": 1},
+          "count": {"type": "integer", "minimum": 1}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "event_id": "22222222-2222-4222-8222-222222222222",
+      "event_name": "argument_compiled",
+      "schema_version": 1,
+      "occurred_at": "2026-04-16T12:05:00Z",
+      "application_id": "app_abc123",
+      "argument_graph_ref": "arg_abc123",
+      "n_propositions": 57,
+      "n_relations": 88
+    }
+  ]
+}

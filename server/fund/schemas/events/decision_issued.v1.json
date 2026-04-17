@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coherence-engine/events/decision_issued/v1",
+  "title": "DecisionIssuedV1",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_name",
+    "schema_version",
+    "occurred_at",
+    "application_id",
+    "decision",
+    "cs_superiority",
+    "cs_required",
+    "decision_policy_version",
+    "scoring_version"
+  ],
+  "properties": {
+    "event_id": {"type": "string", "format": "uuid"},
+    "event_name": {"type": "string", "const": "decision_issued"},
+    "schema_version": {"type": "integer", "const": 1},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "application_id": {"type": "string", "minLength": 1},
+    "decision": {"type": "string", "enum": ["pass", "reject", "manual_review"]},
+    "cs_superiority": {"type": "number"},
+    "cs_required": {"type": "number"},
+    "decision_policy_version": {"type": "string", "minLength": 1},
+    "scoring_version": {"type": "string", "minLength": 1},
+    "decision_id": {"type": "string", "minLength": 1},
+    "threshold_required": {"type": "number"},
+    "coherence_observed": {"type": "number"},
+    "margin": {"type": "number"},
+    "failed_gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["gate", "reason_code"],
+        "properties": {
+          "gate": {"type": "string", "minLength": 1},
+          "reason_code": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
+    },
+    "policy_version": {"type": "string", "minLength": 1},
+    "parameter_set_id": {"type": "string", "minLength": 1},
+    "mode": {
+      "type": "string",
+      "enum": ["enforce", "shadow"],
+      "default": "enforce"
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "event_id": "33333333-3333-4333-8333-333333333333",
+      "event_name": "decision_issued",
+      "schema_version": 1,
+      "occurred_at": "2026-04-16T12:10:00Z",
+      "application_id": "app_abc123",
+      "decision": "pass",
+      "cs_superiority": 0.29,
+      "cs_required": 0.18,
+      "decision_policy_version": "decision-policy-v1.0.0",
+      "scoring_version": "scoring-v1.0.0"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+# Optional issue forms live under .github/ISSUE_TEMPLATE/ (e.g. oncall-live-drill-followup.yml).
+# Live-drill follow-up also emits env-specific .md/.json templates from oncall-route-verification.yml
+# (see docs/ops/runbooks/live_drill_*.md); tracker routing uses optional repo vars ONCALL_TRACKER_*.
+blank_issues_enabled: true

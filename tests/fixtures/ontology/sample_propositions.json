@@ -1,0 +1,18 @@
+{
+  "schema_version": "ontology-fixture-v1",
+  "notes": "Twelve-proposition fixture exercising each entity type and each relation type.",
+  "propositions": [
+    {"id": "p01", "text": "Our team drives revenue.", "prop_type": "claim"},
+    {"id": "p02", "text": "Strong retention leads to mrr growth.", "prop_type": "premise"},
+    {"id": "p03", "text": "Our team faces competitors.", "prop_type": "premise"},
+    {"id": "p04", "text": "Product depends on platform.", "prop_type": "premise"},
+    {"id": "p05", "text": "Onboarding is part of the product.", "prop_type": "premise"},
+    {"id": "p06", "text": "Revenue tracks growth rate.", "prop_type": "premise"},
+    {"id": "p07", "text": "We rely on customers.", "prop_type": "premise"},
+    {"id": "p08", "text": "Churn causes lost ltv.", "prop_type": "premise"},
+    {"id": "p09", "text": "Founders drive mrr.", "prop_type": "premise"},
+    {"id": "p10", "text": "We face incumbents.", "prop_type": "premise"},
+    {"id": "p11", "text": "Users depend on platform.", "prop_type": "premise"},
+    {"id": "p12", "text": "Therefore growth improves.", "prop_type": "claim"}
+  ]
+}

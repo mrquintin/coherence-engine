@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "gate": "release",
+  "environment": "production",
+  "github_repository": "your-org/coherence_engine",
+  "snooze": {
+    "expires_at": "2026-12-31T23:59:59Z",
+    "approver": "ops-oncall@example.com",
+    "change_id": "CHG-00000",
+    "reason": "Temporary waiver while webhook provider is in maintenance.",
+    "reason_code": "MAINTENANCE"
+  }
+}

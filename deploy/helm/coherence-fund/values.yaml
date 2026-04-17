@@ -1,0 +1,148 @@
+image:
+  repository: ghcr.io/your-org/coherence-engine
+  tag: latest
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: false
+  name: ""
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8010
+
+api:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+worker:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  batchSize: 200
+  pollSeconds: 2
+
+scoringWorker:
+  replicas: 1
+  maxJobs: 100
+  pollSeconds: 2
+  leaseSeconds: 120
+  retryBaseSeconds: 5
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+
+# env: non-sensitive runtime flags. For provider-specific secrets use secretEnv or an external Secret;
+# do not put COHERENCE_FUND_OPS_ALERT_WEBHOOK_* in plain values in production.
+# Map each cluster/environment to PagerDuty escalation policies, Opsgenie teams/policies, or Alertmanager
+# receivers via your observability repo; record logical names in deploy/ops/oncall-route-policy (example:
+# oncall-route-policy.example.json) and verify with deploy/scripts/verify_oncall_route_policy.py.
+env:
+  COHERENCE_FUND_AUTO_CREATE_TABLES: "false"
+  COHERENCE_FUND_SERVICE_NAME: "fund-orchestrator-api"
+  COHERENCE_FUND_SERVICE_VERSION: "0.2.0"
+  COHERENCE_FUND_TOPIC_PREFIX: "coherence.fund"
+  COHERENCE_FUND_OUTBOX_BACKEND: "redis"
+  AWS_REGION: "us-east-1"
+  COHERENCE_FUND_AUTH_MODE: "db"
+  COHERENCE_FUND_RATE_LIMIT_ENABLED: "true"
+  COHERENCE_FUND_RATE_LIMIT_REQUESTS: "120"
+  COHERENCE_FUND_RATE_LIMIT_WINDOW_SECONDS: "60"
+  COHERENCE_FUND_BOOTSTRAP_ADMIN_ENABLED: "true"
+  COHERENCE_FUND_BOOTSTRAP_ADMIN_SECRET_REF: "coherence/fund/bootstrap-admin"
+  COHERENCE_FUND_BOOTSTRAP_ADMIN_CACHE_SECONDS: "30"
+  COHERENCE_FUND_SECRET_MANAGER_PROVIDER: "aws"
+  COHERENCE_FUND_SECRET_MANAGER_TIMEOUT_SECONDS: "5"
+  COHERENCE_FUND_SECRET_MANAGER_TOKEN_FIELD: "token"
+  COHERENCE_FUND_SECRET_MANAGER_STRICT_POLICY: "true"
+  COHERENCE_FUND_SECRET_MANAGER_STARTUP_ENFORCE: "true"
+  COHERENCE_FUND_SECRET_MANAGER_ALLOW_STATIC_CREDENTIALS: "false"
+  COHERENCE_FUND_AWS_REGION: "us-east-1"
+  # Worker ops thresholds: "0" disables in-process warnings (safe default). Tune per docs/ops/slo_threshold_standards.md.
+  COHERENCE_FUND_OUTBOX_OPS_QUEUE_WARN_DEPTH: "0"
+  COHERENCE_FUND_OUTBOX_OPS_OLDEST_WARN_SECONDS: "0"
+  COHERENCE_FUND_OUTBOX_OPS_FAILED_DLQ_WARN_COUNT: "0"
+  COHERENCE_FUND_SCORING_OPS_QUEUE_WARN_DEPTH: "0"
+  COHERENCE_FUND_SCORING_OPS_OLDEST_WARN_SECONDS: "0"
+  COHERENCE_FUND_SCORING_OPS_FAILED_DLQ_WARN_COUNT: "0"
+  COHERENCE_FUND_OPS_ALERT_ROUTER_MODE: "none"
+  COHERENCE_FUND_OPS_ALERT_WEBHOOK_TIMEOUT_SECONDS: "5"
+  COHERENCE_FUND_OPS_ALERT_COOLDOWN_SECONDS: "300"
+  COHERENCE_FUND_OPS_ALERT_DEDUPE_KEY: "component_tags"
+  COHERENCE_FUND_OPS_ALERT_SEVERITY_MAP: "{}"
+
+secretEnv:
+  COHERENCE_FUND_DATABASE_URL: "postgresql+psycopg://coherence:coherence@postgres:5432/coherence_fund"
+  REDIS_URL: "redis://redis:6379/0"
+  KAFKA_BOOTSTRAP_SERVERS: ""
+  SQS_QUEUE_URL: ""
+  COHERENCE_FUND_VAULT_ADDR: ""
+  COHERENCE_FUND_VAULT_TOKEN: ""
+  COHERENCE_FUND_VAULT_TOKEN_FILE: ""
+
+hpa:
+  api:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    cpuUtilization: 70
+    memoryUtilization: 80
+  worker:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 5
+    cpuUtilization: 75
+    memoryUtilization: 85
+  scoringWorker:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 5
+    cpuUtilization: 75
+    memoryUtilization: 85
+
+pdb:
+  api:
+    enabled: true
+    minAvailable: 1
+  worker:
+    enabled: true
+    minAvailable: 1
+  scoringWorker:
+    enabled: true
+    minAvailable: 1
+
+networkPolicy:
+  enabled: true
+
+migrations:
+  enabled: true
+
+# Optional PrometheusRule (monitoring.coreos.com/v1). Disabled by default — no impact unless enabled.
+prometheusRules:
+  enabled: false
+  namespace: ""
+  additionalLabels: {}
+  alertTeam: platform
+  alertSeverity: warning
+  criticalSeverity: critical
+  extraAlertLabels: {}
+

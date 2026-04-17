@@ -1,0 +1,56 @@
+{
+  "schema_version": "1",
+  "description": "Example per-environment on-call routing registry. Copy to a private path (e.g. deploy/ops/oncall-route-policy.json, gitignored) and point verify_oncall_route_policy.py at it. Do not commit real integration keys.",
+  "escalation_ownership_reviewed_at": "2026-04-01",
+  "escalation_ownership_max_age_days": 365,
+  "oncall_route_policy_reviewed_at": "2026-04-01",
+  "oncall_route_policy_max_age_days": 365,
+  "verification_evidence_reviewed_at": "2026-04-01",
+  "verification_evidence_max_age_days": 365,
+  "environments": [
+    {
+      "name": "dev",
+      "secret_manager_provider": "aws",
+      "oncall_provider": "alertmanager",
+      "receiver_ref": "coherence-fund-dev",
+      "escalation_policy_ref": "",
+      "in_process_ops_alert_router_mode": "none",
+      "prometheus_alert_route_labels": {
+        "service": "coherence-fund",
+        "team": "platform",
+        "environment": "dev"
+      },
+      "notes": "Alertmanager route matches labels; receiver forwards to Slack or null sink."
+    },
+    {
+      "name": "staging",
+      "secret_manager_provider": "aws",
+      "oncall_provider": "opsgenie",
+      "receiver_ref": "opsgenie-coherence-staging",
+      "escalation_policy_ref": "staging-escalation-policy-id",
+      "escalation_rotation_ref": "example-opsgenie-schedule-staging",
+      "in_process_ops_alert_router_mode": "file",
+      "prometheus_alert_route_labels": {
+        "service": "coherence-fund",
+        "team": "platform",
+        "environment": "staging"
+      },
+      "notes": "Opsgenie team + escalation policy ID from Opsgenie UI; in-process alerts to JSONL for correlation drills."
+    },
+    {
+      "name": "prod",
+      "secret_manager_provider": "aws",
+      "oncall_provider": "pagerduty",
+      "receiver_ref": "pagerduty-coherence-fund-critical",
+      "escalation_policy_ref": "PXXXXXX",
+      "escalation_rotation_ref": "example-pd-schedule-prod-primary",
+      "in_process_ops_alert_router_mode": "none",
+      "prometheus_alert_route_labels": {
+        "service": "coherence-fund",
+        "team": "platform",
+        "environment": "prod"
+      },
+      "notes": "PagerDuty service/integration routing; escalation_policy_ref is the PD escalation policy ID or human-readable name used in your CMDB."
+    }
+  ]
+}

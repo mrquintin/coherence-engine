@@ -1,0 +1,129 @@
+{{- if and .Values.prometheusRules .Values.prometheusRules.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "coherence-fund.fullname" . }}-worker-slo
+  {{- if .Values.prometheusRules.namespace }}
+  namespace: {{ .Values.prometheusRules.namespace | quote }}
+  {{- else }}
+  namespace: {{ .Release.Namespace }}
+  {{- end }}
+  labels:
+    app.kubernetes.io/name: {{ include "coherence-fund.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    helm.sh/chart: {{ printf "%s-%s" .Chart.Name (.Chart.Version | replace "+" "_") | quote }}
+    {{- with .Values.prometheusRules.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: coherence-fund-worker-slo
+      rules:
+        - alert: CoherenceFundScoringQueueDepthHigh
+          expr: max(coherence_fund_scoring_eligible_queue_depth) > 100
+          for: 15m
+          labels:
+            {{- include "coherence-fund.prometheusRuleAlertLabels" . | nindent 12 }}
+            component: scoring
+          annotations:
+            summary: Scoring eligible queue depth is elevated
+            description: >
+              max(coherence_fund_scoring_eligible_queue_depth) has been above 100 for 15m.
+              See docs/ops/runbooks/production_observability_rollout.md
+        - alert: CoherenceFundOutboxPendingHigh
+          expr: max(coherence_fund_outbox_pending_dispatchable) > 5000
+          for: 15m
+          labels:
+            {{- include "coherence-fund.prometheusRuleAlertLabels" . | nindent 12 }}
+            component: outbox
+          annotations:
+            summary: Outbox dispatchable backlog is elevated
+            description: >
+              max(coherence_fund_outbox_pending_dispatchable) has been above 5000 for 15m.
+              See docs/ops/runbooks/production_observability_rollout.md
+        - alert: CoherenceFundScoringOldestAgeHigh
+          expr: max(coherence_fund_scoring_oldest_eligible_age_seconds) > 1800
+          for: 15m
+          labels:
+            {{- include "coherence-fund.prometheusRuleAlertLabels" . | nindent 12 }}
+            component: scoring
+          annotations:
+            summary: Oldest eligible scoring job age is high
+            description: >
+              max(coherence_fund_scoring_oldest_eligible_age_seconds) exceeds 1800s for 15m.
+              See docs/ops/slo_threshold_standards.md
+        - alert: CoherenceFundOutboxOldestAgeHigh
+          expr: max(coherence_fund_outbox_oldest_pending_age_seconds) > 3600
+          for: 15m
+          labels:
+            {{- include "coherence-fund.prometheusRuleAlertLabels" . | nindent 12 }}
+            component: outbox
+          annotations:
+            summary: Oldest dispatchable outbox row age is high
+            description: >
+              max(coherence_fund_outbox_oldest_pending_age_seconds) exceeds 3600s for 15m.
+              See docs/ops/slo_threshold_standards.md
+        - alert: CoherenceFundScoringFailedDLQElevated
+          expr: max(coherence_fund_scoring_failed_dlq) > 5
+          for: 10m
+          labels:
+            severity: {{ .Values.prometheusRules.criticalSeverity | default "critical" | quote }}
+            team: {{ .Values.prometheusRules.alertTeam | default "platform" | quote }}
+            service: "coherence-fund"
+            {{- range $k, $v := (.Values.prometheusRules.extraAlertLabels | default dict) }}
+            {{ $k }}: {{ $v | quote }}
+            {{- end }}
+            component: scoring
+          annotations:
+            summary: Scoring terminal failure count is elevated
+            description: >
+              max(coherence_fund_scoring_failed_dlq) above 5 for 10m.
+              See docs/ops/runbooks/production_observability_rollout.md
+        - alert: CoherenceFundOutboxFailedDLQElevated
+          expr: max(coherence_fund_outbox_failed_dlq) > 10
+          for: 10m
+          labels:
+            severity: {{ .Values.prometheusRules.criticalSeverity | default "critical" | quote }}
+            team: {{ .Values.prometheusRules.alertTeam | default "platform" | quote }}
+            service: "coherence-fund"
+            {{- range $k, $v := (.Values.prometheusRules.extraAlertLabels | default dict) }}
+            {{ $k }}: {{ $v | quote }}
+            {{- end }}
+            component: outbox
+          annotations:
+            summary: Outbox terminal failure count is elevated
+            description: >
+              max(coherence_fund_outbox_failed_dlq) above 10 for 10m.
+              See docs/ops/runbooks/production_observability_rollout.md
+        - alert: CoherenceFundWorkerOpsWarnQueueDepth
+          expr: max by (component) (coherence_fund_worker_ops_warn_queue_depth) > 0
+          for: 10m
+          labels:
+            {{- include "coherence-fund.prometheusRuleAlertLabels" . | nindent 12 }}
+          annotations:
+            summary: Worker in-process queue depth warning flag is set
+            description: >
+              In-process threshold COHERENCE_FUND_*_OPS_QUEUE_WARN_DEPTH fired for a worker.
+              See docs/ops/slo_threshold_standards.md
+        - alert: CoherenceFundWorkerOpsWarnOldestLatency
+          expr: max by (component) (coherence_fund_worker_ops_warn_oldest_latency) > 0
+          for: 10m
+          labels:
+            {{- include "coherence-fund.prometheusRuleAlertLabels" . | nindent 12 }}
+          annotations:
+            summary: Worker in-process oldest-age warning flag is set
+            description: >
+              In-process threshold COHERENCE_FUND_*_OPS_OLDEST_WARN_SECONDS fired.
+              See docs/ops/slo_threshold_standards.md
+        - alert: CoherenceFundWorkerOpsWarnFailedDLQ
+          expr: max by (component) (coherence_fund_worker_ops_warn_failed_dlq) > 0
+          for: 10m
+          labels:
+            {{- include "coherence-fund.prometheusRuleAlertLabels" . | nindent 12 }}
+          annotations:
+            summary: Worker in-process DLQ warning flag is set
+            description: >
+              In-process threshold COHERENCE_FUND_*_OPS_FAILED_DLQ_WARN_COUNT fired.
+              See docs/ops/slo_threshold_standards.md
+{{- end }}

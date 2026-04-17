@@ -1,0 +1,37 @@
+---
+description: Auto-delegate large chat tasks to parallel subagents
+alwaysApply: true
+---
+
+# Parallel Delegation In Chat
+
+When handling user requests in this project chat:
+
+- Auto-delegate large or multi-part tasks to subagents in parallel (up to 4).
+- If the user asks to force splitting (e.g. "split across 3 agents"), obey exactly up to 4.
+- Launch parallel subagents in a single tool call batch when possible.
+- For execution-heavy requests, delegate implementation work (not only analysis).
+- Give each subagent a distinct, non-overlapping objective and return a merged final result.
+- Prefer 2-4 agents only for broad, complex, or high-token tasks; keep narrow tasks single-agent.
+- For forced delegation, do not ask for confirmation unless constraints are unclear.
+
+## Trigger Heuristics
+
+Treat a task as "large" if one or more apply:
+
+- User asks for end-to-end implementation touching multiple files/systems.
+- Prompt contains many requirements, steps, or broad exploration + implementation.
+- The request would benefit from independent streams (explore, implement, test, summarize).
+
+## Execution-First Delegation
+
+If the user intent is implementation, delegate executable workstreams by default:
+
+- stream A: feature implementation
+- stream B: tests/verification scaffolding
+- stream C: docs/config wiring
+- stream D: integration and final conflict-free assembly
+
+## Fallback
+
+If subagents are unavailable or restricted, continue in single-agent mode and state that parallel delegation could not be used.

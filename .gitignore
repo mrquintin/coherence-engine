@@ -1,0 +1,75 @@
+# ---------------------------------------------------------------------------
+# Release staging (ignored on purpose).
+# build/installers/ is deliberately NOT ignored — those artifacts ship with the
+# repo so raw.githubusercontent.com fallback links and historical checkouts
+# can still install the app offline.
+# ---------------------------------------------------------------------------
+build/release-artifacts/
+build/.installer-work/
+
+# ---------------------------------------------------------------------------
+# Language / ecosystem caches
+# ---------------------------------------------------------------------------
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / JS
+node_modules/
+.cache/
+.parcel-cache/
+.next/
+.turbo/
+
+# Rust / Tauri
+target/
+**/*.rs.bk
+
+# macOS / Xcode
+.DS_Store
+DerivedData/
+*.xcworkspace/xcuserdata/
+*.xcuserdatad/
+xcuserdata/
+*.hmap
+*.moved-aside
+build/Build/
+
+# Flutter / Dart
+.flutter-plugins
+.flutter-plugins-dependencies
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+
+# Editor cruft
+.idea/
+*.swp
+*.swo
+.vscode/*.log
+
+# Credentials / local env (never commit)
+.env
+.env.*
+!.env.example
+
+# SQLite databases and their journal/WAL sidecars (runtime state, not source)
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Runtime state directory (notifications dumps, transient app data)
+var/

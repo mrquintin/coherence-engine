@@ -1,0 +1,169 @@
+{
+  "exit_code": 0,
+  "results": [
+    {
+      "check_id": "alembic_head",
+      "detail": "single alembic head resolved to 20260417_000006",
+      "evidence": {
+        "heads": [
+          "20260417_000006"
+        ],
+        "versions_files": [
+          "20260408_000001_create_fund_backend_tables.py",
+          "20260409_000002_scoring_queue_and_artifact_fields.py",
+          "20260409_000003_api_keys_and_audit.py",
+          "20260409_000004_worker_reliability_fields.py",
+          "20260417_000001_decision_policy_version.py",
+          "20260417_000002_artifact_kind.py",
+          "20260417_000003_portfolio_state.py",
+          "20260417_000004_scoring_mode.py",
+          "20260417_000005_notification_log.py",
+          "20260417_000006_workflow_checkpoints.py"
+        ]
+      },
+      "reason_code": null,
+      "status": "pass"
+    },
+    {
+      "check_id": "decision_policy_version",
+      "detail": "DECISION_POLICY_VERSION == 'decision-policy-v1'",
+      "evidence": {
+        "observed": "decision-policy-v1"
+      },
+      "reason_code": null,
+      "status": "pass"
+    },
+    {
+      "check_id": "event_schemas",
+      "detail": "validated 4 event example(s)",
+      "evidence": {
+        "checked": [
+          "argument_compiled:1",
+          "decision_issued:1",
+          "founder_notified:1",
+          "interview_completed:1"
+        ],
+        "failures": []
+      },
+      "reason_code": null,
+      "status": "pass"
+    },
+    {
+      "check_id": "prompt_registry",
+      "detail": "prompt registry verified ok",
+      "evidence": {
+        "prompts": 2
+      },
+      "reason_code": null,
+      "status": "pass"
+    },
+    {
+      "check_id": "e2e_integration_test",
+      "detail": "e2e integration test present with @pytest.mark.e2e",
+      "evidence": {
+        "path": "/Users/michaelquintin/Desktop/Main Desktop - Michael's MacBook Pro/Projects/Coherence_Engine/Coherence_Engine_Project/coherence_engine/tests/integration/test_e2e_pipeline.py"
+      },
+      "reason_code": null,
+      "status": "pass"
+    },
+    {
+      "check_id": "backtest_spec",
+      "detail": "backtest spec present at docs/specs/backtest_spec.md",
+      "evidence": {
+        "path": "/Users/michaelquintin/Desktop/Main Desktop - Michael's MacBook Pro/Projects/Coherence_Engine/Coherence_Engine_Project/coherence_engine/docs/specs/backtest_spec.md"
+      },
+      "reason_code": null,
+      "status": "pass"
+    },
+    {
+      "check_id": "red_team_expected_matrix",
+      "detail": "red-team expected matrix present (12 cases)",
+      "evidence": {
+        "cases": 12,
+        "path": "/Users/michaelquintin/Desktop/Main Desktop - Michael's MacBook Pro/Projects/Coherence_Engine/Coherence_Engine_Project/coherence_engine/tests/adversarial/labels.json"
+      },
+      "reason_code": null,
+      "status": "pass"
+    },
+    {
+      "check_id": "admin_dashboard_router",
+      "detail": "admin_ui router prefix='/admin' and mounted in create_app()",
+      "evidence": {
+        "prefix": "/admin"
+      },
+      "reason_code": null,
+      "status": "pass"
+    },
+    {
+      "check_id": "status_doc_prompt_recap",
+      "detail": "COHERENCE_ENGINE_PROJECT_STATUS.txt references prompts 01-20",
+      "evidence": {
+        "found": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05",
+          "06",
+          "07",
+          "08",
+          "09",
+          "10",
+          "11",
+          "12",
+          "13",
+          "14",
+          "15",
+          "16",
+          "17",
+          "18",
+          "19",
+          "20"
+        ],
+        "missing": [],
+        "path": "/Users/michaelquintin/Desktop/Main Desktop - Michael's MacBook Pro/Projects/Coherence_Engine/Coherence_Engine_Project/coherence_engine/COHERENCE_ENGINE_PROJECT_STATUS.txt"
+      },
+      "reason_code": null,
+      "status": "pass"
+    },
+    {
+      "check_id": "continuation_doc_prompt_recap",
+      "detail": "COHERENCE_ENGINE_CONTINUATION_PROMPT.txt references prompts 01-20",
+      "evidence": {
+        "found": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05",
+          "06",
+          "07",
+          "08",
+          "09",
+          "10",
+          "11",
+          "12",
+          "13",
+          "14",
+          "15",
+          "16",
+          "17",
+          "18",
+          "19",
+          "20"
+        ],
+        "missing": [],
+        "path": "/Users/michaelquintin/Desktop/Main Desktop - Michael's MacBook Pro/Projects/Coherence_Engine/Coherence_Engine_Project/coherence_engine/COHERENCE_ENGINE_CONTINUATION_PROMPT.txt"
+      },
+      "reason_code": null,
+      "status": "pass"
+    }
+  ],
+  "schema_version": "release-readiness-report-v1",
+  "summary": {
+    "errors": 0,
+    "failed": 0,
+    "passed": 10,
+    "total": 10
+  }
+}

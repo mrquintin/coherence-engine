@@ -1,0 +1,10 @@
+{
+  "schema_version": "hybrid-domain-fixture-v1",
+  "notes": "Market-leaning argument about competition, innovation, and efficient outcomes.",
+  "propositions": [
+    {"id": "m1", "text": "Free markets allocate resources efficiently through the price mechanism.", "prop_type": "premise"},
+    {"id": "m2", "text": "Competition drives innovation and improves products over time.", "prop_type": "premise"},
+    {"id": "m3", "text": "Voluntary exchange between consenting parties creates mutual benefit and welfare.", "prop_type": "premise"},
+    {"id": "m4", "text": "Therefore property rights and contract enforcement must be preserved.", "prop_type": "claim"}
+  ]
+}

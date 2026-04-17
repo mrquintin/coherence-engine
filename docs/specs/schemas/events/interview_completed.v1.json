@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coherence.engine/specs/schemas/events/interview_completed.v1.json",
+  "title": "InterviewCompletedPayloadV1",
+  "type": "object",
+  "required": [
+    "application_id",
+    "founder_id",
+    "interview_id",
+    "channel",
+    "duration_seconds",
+    "sections_covered",
+    "transcript_uri",
+    "audio_uri",
+    "transcript_quality_score",
+    "consent_status",
+    "language"
+  ],
+  "properties": {
+    "application_id": {"type": "string", "minLength": 1},
+    "founder_id": {"type": "string", "minLength": 1},
+    "interview_id": {"type": "string", "minLength": 1},
+    "channel": {"type": "string", "enum": ["phone", "web_voice", "async_voice"]},
+    "duration_seconds": {"type": "integer", "minimum": 60},
+    "sections_covered": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "transcript_uri": {"type": "string", "minLength": 1},
+    "audio_uri": {"type": "string", "minLength": 1},
+    "transcript_quality_score": {"type": "number", "minimum": 0, "maximum": 1},
+    "consent_status": {"type": "string", "const": "granted"},
+    "language": {"type": "string", "minLength": 2}
+  },
+  "additionalProperties": false
+}
+

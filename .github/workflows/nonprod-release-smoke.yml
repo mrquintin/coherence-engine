@@ -1,0 +1,472 @@
+name: Non-Prod Release Smoke
+
+on:
+  pull_request:
+    paths:
+      - "deploy/**"
+      - ".github/workflows/**"
+      - "Makefile"
+      - "tests/**"
+  push:
+    branches: ["main"]
+    paths:
+      - "deploy/**"
+      - ".github/workflows/**"
+      - "Makefile"
+      - "tests/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  # Mirrors release.yml on-call gate (no cross-workflow artifacts; no mandatory external network).
+  oncall_release_gate_smoke:
+    name: On-call release gate (smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,fund-workers]"
+          python -m pip install "PyYAML>=6.0"
+
+      # Same live-drill artifact age check as release.yml; looser default max age for non-prod.
+      - name: Live-drill evidence freshness (GitHub Actions metadata)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NONPROD_ONCALL_LIVE_DRILL_EVIDENCE_MAX_AGE_HOURS: ${{ vars.NONPROD_ONCALL_LIVE_DRILL_EVIDENCE_MAX_AGE_HOURS }}
+          NONPROD_ONCALL_LIVE_DRILL_RUNS_BRANCH: ${{ vars.NONPROD_ONCALL_LIVE_DRILL_RUNS_BRANCH }}
+        run: |
+          python <<'PY'
+          import json
+          import os
+          import pathlib
+          import subprocess
+          import sys
+          from datetime import datetime, timezone
+
+          repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
+          if not repo:
+              print("GITHUB_REPOSITORY is unset", file=sys.stderr)
+              sys.exit(1)
+
+          raw_max = (os.environ.get("NONPROD_ONCALL_LIVE_DRILL_EVIDENCE_MAX_AGE_HOURS") or "").strip()
+          try:
+              max_age_h = float(raw_max) if raw_max else 336.0
+          except ValueError:
+              print(
+                  f"Invalid vars.NONPROD_ONCALL_LIVE_DRILL_EVIDENCE_MAX_AGE_HOURS={raw_max!r}; expected a number (hours).",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          if max_age_h <= 0:
+              print("NONPROD_ONCALL_LIVE_DRILL_EVIDENCE_MAX_AGE_HOURS must be positive.", file=sys.stderr)
+              sys.exit(1)
+
+          branch = (os.environ.get("NONPROD_ONCALL_LIVE_DRILL_RUNS_BRANCH") or "").strip() or "main"
+          workflow_file = "oncall-route-verification.yml"
+          artifact_name = "oncall-live-webhook-drill"
+          max_seconds = max_age_h * 3600.0
+
+          def gh_api(path_qs: str) -> dict:
+              url = f"repos/{repo}/actions/{path_qs}"
+              out = subprocess.run(
+                  ["gh", "api", url],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              )
+              return json.loads(out.stdout)
+
+          def parse_ts(s: str) -> datetime:
+              return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+          runs_url = (
+              f"workflows/{workflow_file}/runs"
+              f"?branch={branch}&per_page=30&status=completed"
+          )
+          try:
+              bundle = gh_api(runs_url)
+          except subprocess.CalledProcessError as e:
+              print(e.stderr or e.stdout or str(e), file=sys.stderr)
+              print(
+                  "Non-prod release smoke gate: could not list workflow runs (need actions:read on GITHUB_TOKEN).",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          runs = bundle.get("workflow_runs") or []
+          now = datetime.now(timezone.utc)
+          found_run = None
+          found_art_ts = None
+
+          for run in runs:
+              if (run.get("conclusion") or "").lower() != "success":
+                  continue
+              rid = run.get("id")
+              if rid is None:
+                  continue
+              try:
+                  art_bundle = gh_api(f"runs/{rid}/artifacts")
+              except subprocess.CalledProcessError:
+                  continue
+              for art in art_bundle.get("artifacts") or []:
+                  if art.get("name") == artifact_name:
+                      created = art.get("created_at") or run.get("updated_at")
+                      if not created:
+                          continue
+                      found_run = run
+                      found_art_ts = parse_ts(created)
+                      break
+              if found_run is not None:
+                  break
+
+          state_dir = pathlib.Path("artifacts/oncall")
+          state_dir.mkdir(parents=True, exist_ok=True)
+          state_path = state_dir / "live-drill-evidence-state.json"
+
+          if found_run is None or found_art_ts is None:
+              print(
+                  "Non-prod on-call gate FAILED: no successful oncall-route-verification run on "
+                  f"branch={branch!r} with Actions artifact "
+                  f"{artifact_name!r} (live webhook drill evidence).\n"
+                  "Produce evidence by running workflow On-call route verification with a live POST "
+                  "(secret ONCALL_ROUTE_VERIFICATION_WEBHOOK_URL and manual run_live_webhook_drill, "
+                  "or scheduled with vars.ONCALL_SCHEDULED_LIVE_PROVIDER_DRILL=true outside quiet hours).",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          age_s = (now - found_art_ts).total_seconds()
+          stale = age_s > max_seconds
+          state = {
+              "evidence_found": True,
+              "stale": stale,
+              "artifact_name": artifact_name,
+              "workflow_file": workflow_file,
+              "branch": branch,
+              "max_age_hours": max_age_h,
+              "evidence_created_at": found_art_ts.isoformat().replace("+00:00", "Z"),
+              "age_seconds": round(age_s, 3),
+              "workflow_run_id": found_run.get("id"),
+              "workflow_run_url": found_run.get("html_url"),
+              "workflow_run_updated_at": found_run.get("updated_at"),
+          }
+          state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+
+          if stale:
+              print(
+                  "Live-drill evidence is STALE (non-prod gate; recorded); next step applies strict window or approved snooze.\n"
+                  f"- artifact: {artifact_name}\n"
+                  f"- workflow run: {found_run.get('html_url')}\n"
+                  f"- evidence_created_at (UTC): {found_art_ts.isoformat()}\n"
+                  f"- age_hours: {age_s / 3600:.2f}\n"
+                  f"- max_age_hours (vars.NONPROD_ONCALL_LIVE_DRILL_EVIDENCE_MAX_AGE_HOURS, default 336): {max_age_h}\n"
+                  f"- runs branch filter (vars.NONPROD_ONCALL_LIVE_DRILL_RUNS_BRANCH, default main): {branch!r}",
+                  file=sys.stderr,
+              )
+          else:
+              print(
+                  "Live-drill evidence freshness OK (non-prod gate):\n"
+                  f"- workflow run: {found_run.get('html_url')}\n"
+                  f"- evidence_created_at (UTC): {found_art_ts.isoformat()}\n"
+                  f"- age_hours: {age_s / 3600:.2f} (max {max_age_h}h)\n"
+                  f"- branch filter: {branch!r}"
+              )
+          PY
+
+      - name: Evaluate live-drill evidence gate (freshness + optional snooze)
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+          NONPROD_ONCALL_EVIDENCE_EXCEPTION_JSON: ${{ secrets.NONPROD_ONCALL_EVIDENCE_EXCEPTION_JSON }}
+          NONPROD_ONCALL_EVIDENCE_EXCEPTION_RELATIVE_PATH: ${{ vars.NONPROD_ONCALL_EVIDENCE_EXCEPTION_RELATIVE_PATH }}
+        run: |
+          python deploy/scripts/evaluate_oncall_evidence_exception.py \
+            --state artifacts/oncall/live-drill-evidence-state.json \
+            --decision-out artifacts/oncall/oncall-evidence-gate-decision.json \
+            --gate nonprod
+
+      - name: Upload on-call evidence gate decision (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oncall-evidence-gate-decision-nonprod-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/oncall/oncall-evidence-gate-decision.json
+          if-no-files-found: ignore
+
+      - name: Prepare artifact directory
+        run: mkdir -p artifacts/oncall
+
+      - name: Resolve private on-call route policy (secret or repo-relative path)
+        env:
+          ONCALL_ROUTE_POLICY_JSON: ${{ secrets.ONCALL_ROUTE_POLICY_JSON }}
+          ONCALL_ROUTE_POLICY_RELATIVE_PATH: ${{ vars.ONCALL_ROUTE_POLICY_RELATIVE_PATH }}
+        run: |
+          set -euo pipefail
+          target="${GITHUB_WORKSPACE}/artifacts/oncall/oncall-route-policy.private.json"
+          if [ -n "${ONCALL_ROUTE_POLICY_JSON}" ]; then
+            printf '%s' "${ONCALL_ROUTE_POLICY_JSON}" > "${target}"
+          elif [ -n "${ONCALL_ROUTE_POLICY_RELATIVE_PATH}" ]; then
+            src="${GITHUB_WORKSPACE}/${ONCALL_ROUTE_POLICY_RELATIVE_PATH}"
+            if [ ! -f "${src}" ]; then
+              echo "vars.ONCALL_ROUTE_POLICY_RELATIVE_PATH points to missing file: ${src}" >&2
+              exit 1
+            fi
+            cp "${src}" "${target}"
+          else
+            echo "Non-prod release smoke on-call gate requires environment-owned private policy: set repository secret ONCALL_ROUTE_POLICY_JSON (full JSON) or variable ONCALL_ROUTE_POLICY_RELATIVE_PATH (path under the checkout)." >&2
+            exit 1
+          fi
+
+      - name: Verify on-call route policy (local JSON, no network)
+        run: |
+          python deploy/scripts/verify_oncall_route_policy.py \
+            --policy artifacts/oncall/oncall-route-policy.private.json \
+            --json-out artifacts/oncall/oncall-route-verification.json \
+            --fail-on-stale-escalation-ownership \
+            --fail-on-stale-oncall-route-policy \
+            --fail-on-stale-verification-evidence \
+            --require-escalation-rotation-ref
+
+      - name: Parse YAML templates (workflows + deploy)
+        run: |
+          python <<'PY'
+          import pathlib
+          import sys
+
+          import yaml
+
+          root = pathlib.Path(".")
+          paths = [
+              root / ".github/workflows/oncall-route-verification.yml",
+              root / ".github/workflows/uncertainty-recalibration.yml",
+              root / "deploy/k8s/configmap-env-template.yaml",
+              root / "deploy/helm/coherence-fund/values.yaml",
+              root / "deploy/helm/coherence-fund/values-prod.yaml",
+          ]
+          for p in paths:
+              if not p.is_file():
+                  print(f"missing: {p}", file=sys.stderr)
+                  sys.exit(1)
+              yaml.safe_load(p.read_text())
+              print(f"ok: {p}")
+          PY
+
+      - name: Static route template checks (expected alert env keys)
+        run: |
+          python <<'PY'
+          import pathlib
+          import sys
+
+          needle = "COHERENCE_FUND_OPS_ALERT_ROUTER_MODE"
+          files = [
+              pathlib.Path("deploy/systemd/coherence-fund.env.example"),
+              pathlib.Path("deploy/k8s/configmap-env-template.yaml"),
+              pathlib.Path("deploy/helm/coherence-fund/values.yaml"),
+          ]
+          for f in files:
+              text = f.read_text()
+              if needle not in text:
+                  print(f"missing {needle} in {f}", file=sys.stderr)
+                  sys.exit(1)
+              print(f"ok: {f}")
+          PY
+
+      - name: Alert routing unit tests
+        run: pytest tests/test_ops_alert_routing.py -q
+
+      - name: On-call route policy verifier tests
+        run: pytest tests/test_oncall_route_policy_verifier.py -q
+
+      - name: Synthetic file-mode drill (temp JSONL)
+        run: |
+          python <<'PY'
+          import json
+          import os
+          import tempfile
+          from pathlib import Path
+
+          from coherence_engine.server.fund.services import alert_routing
+          from coherence_engine.server.fund.services.alert_routing import route_worker_ops_alert
+
+          alert_routing.reset_alert_routing_state_for_tests()
+          with tempfile.TemporaryDirectory() as d:
+              out = Path(d) / "drill_alerts.jsonl"
+              os.environ["COHERENCE_FUND_OPS_ALERT_ROUTER_MODE"] = "file"
+              os.environ["COHERENCE_FUND_OPS_ALERT_FILE_PATH"] = str(out)
+              os.environ["COHERENCE_FUND_OPS_ALERT_COOLDOWN_SECONDS"] = "0"
+              payload = {
+                  "component": "ci_synthetic_drill",
+                  "warn": ["oncall_route_verification"],
+                  "drill": True,
+                  "source": "github_actions_nonprod_release_smoke_oncall_gate",
+              }
+              route_worker_ops_alert(["oncall_route_verification"], payload)
+              line = out.read_text(encoding="utf-8").strip().splitlines()[-1]
+              row = json.loads(line)
+              assert row["schema"] == "coherence_fund_worker_ops_alert/v1"
+              assert "oncall_route_verification" in row["warn_tags"]
+          print("synthetic file drill ok")
+          PY
+
+      - name: Drill evidence JSONL + release-readiness summary
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          python <<'PY'
+          import json
+          import os
+          import time
+          from pathlib import Path
+
+          art = Path("artifacts/oncall")
+          ver_path = art / "oncall-route-verification.json"
+          verification = json.loads(ver_path.read_text(encoding="utf-8"))
+          decision_path = art / "oncall-evidence-gate-decision.json"
+          gate_decision = json.loads(decision_path.read_text(encoding="utf-8"))
+          evidence_path = art / "oncall-drill-evidence.jsonl"
+          now = time.time()
+          iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
+          lines = [
+              {
+                  "type": "oncall_evidence_gate_decision",
+                  "ts_unix": now,
+                  "ts_iso": iso,
+                  "github_event": os.environ.get("GITHUB_EVENT_NAME"),
+                  "github_run_id": os.environ.get("GITHUB_RUN_ID"),
+                  "decision": gate_decision,
+              },
+              {
+                  "type": "policy_verification",
+                  "ts_unix": now,
+                  "ts_iso": iso,
+                  "github_event": os.environ.get("GITHUB_EVENT_NAME"),
+                  "github_run_id": os.environ.get("GITHUB_RUN_ID"),
+                  "github_run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+                  "github_sha": os.environ.get("GITHUB_SHA"),
+                  "verification": verification,
+              },
+              {
+                  "type": "synthetic_file_drill",
+                  "ts_unix": now,
+                  "ts_iso": iso,
+                  "github_event": os.environ.get("GITHUB_EVENT_NAME"),
+                  "github_run_id": os.environ.get("GITHUB_RUN_ID"),
+                  "result": "pass",
+                  "schema": "coherence_fund_worker_ops_alert/v1",
+                  "warn_tags": ["oncall_route_verification"],
+              },
+          ]
+          evidence_path.write_text(
+              "".join(json.dumps(row, sort_keys=True) + "\n" for row in lines),
+              encoding="utf-8",
+          )
+
+          ok = verification.get("ok") is True
+          status = "PASS" if ok else "FAIL"
+          summary = art / "release-readiness-summary.md"
+          summary.write_text(
+              "\n".join(
+                  [
+                      "# On-call release-readiness (non-prod smoke gate)",
+                      "",
+                      f"**Policy verification**: {status} (`error_count={verification.get('error_count')}`, `warning_count={verification.get('warning_count')}`).",
+                      "",
+                      "## Automated checks (this workflow run)",
+                      "",
+                      "- [x] Same deterministic checks as `release.yml` on-call gate (private policy via `ONCALL_ROUTE_POLICY_JSON` / `ONCALL_ROUTE_POLICY_RELATIVE_PATH`)",
+                      "- [x] Live-drill evidence freshness vs `vars.NONPROD_ONCALL_LIVE_DRILL_EVIDENCE_MAX_AGE_HOURS` (default 336h) on `vars.NONPROD_ONCALL_LIVE_DRILL_RUNS_BRANCH` (default `main`) via latest `oncall-live-webhook-drill` artifact from `oncall-route-verification.yml`",
+                      "- [x] Machine-readable gate decision `oncall-evidence-gate-decision.json` (strict window unless valid `secrets.NONPROD_ONCALL_EVIDENCE_EXCEPTION_JSON` / `vars.NONPROD_ONCALL_EVIDENCE_EXCEPTION_RELATIVE_PATH` snooze)",
+                      "",
+                  ]
+              ),
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload on-call nonprod smoke gate artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: oncall-nonprod-release-gate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/oncall/
+          if-no-files-found: error
+
+  smoke-release-paths:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [helm, k8s, systemd]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup kubectl
+        if: ${{ matrix.target == 'k8s' }}
+        uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.30.0"
+
+      - name: Setup Helm
+        if: ${{ matrix.target == 'helm' }}
+        uses: azure/setup-helm@v4
+        with:
+          version: "v3.14.4"
+
+      - name: Smoke helm release path
+        if: ${{ matrix.target == 'helm' }}
+        run: |
+          helm lint deploy/helm/coherence-fund
+          helm template coherence-fund-smoke deploy/helm/coherence-fund \
+            -f deploy/helm/coherence-fund/values-prod.yaml \
+            -f deploy/helm/coherence-fund/values-prod-kafka.yaml >/tmp/helm-kafka.yaml
+          helm template coherence-fund-smoke deploy/helm/coherence-fund \
+            -f deploy/helm/coherence-fund/values-prod.yaml \
+            -f deploy/helm/coherence-fund/values-prod-redis.yaml >/tmp/helm-redis.yaml
+          helm template coherence-fund-smoke deploy/helm/coherence-fund \
+            -f deploy/helm/coherence-fund/values-prod.yaml \
+            -f deploy/helm/coherence-fund/values-prod-sqs.yaml >/tmp/helm-sqs.yaml
+          rg "scoring-worker" /tmp/helm-kafka.yaml /tmp/helm-redis.yaml /tmp/helm-sqs.yaml
+          rg "process-scoring-jobs" /tmp/helm-kafka.yaml
+
+      - name: Smoke k8s release path
+        if: ${{ matrix.target == 'k8s' }}
+        run: |
+          kubectl kustomize deploy/k8s/overlays/prod >/tmp/kustomize-prod.yaml
+          kubectl kustomize deploy/k8s/overlays/prod-redis >/tmp/kustomize-prod-redis.yaml
+          kubectl kustomize deploy/k8s/overlays/prod-sqs >/tmp/kustomize-prod-sqs.yaml
+          rg -q "kind: Deployment" /tmp/kustomize-prod.yaml
+          rg "name: coherence-fund-scoring-worker" /tmp/kustomize-prod.yaml
+          rg "process-scoring-jobs" /tmp/kustomize-prod.yaml
+
+      - name: Smoke systemd release path
+        if: ${{ matrix.target == 'systemd' }}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,fund-workers]"
+          bash -n deploy/systemd/coherence-fund-health-watchdog.sh
+          rg "^ExecStart=" deploy/systemd/coherence-fund-api.service
+          rg "^ExecStart=" deploy/systemd/coherence-fund-worker.service
+          rg "^ExecStart=" deploy/systemd/coherence-fund-scoring-worker.service
+          rg "SECRET_MANAGER_READY_URL" deploy/systemd/coherence-fund.env.example
+          python deploy/scripts/secret_manager_preflight.py --help
+

@@ -1,0 +1,10 @@
+{
+  "id": "inc_003_compliance_blocked",
+  "category": "incoherent",
+  "one_liner": "Nimbus Ledger offers unregistered securities to retail investors.",
+  "use_of_funds_summary": "Expand unregistered offering to new geographies.",
+  "requested_check_usd": 400000,
+  "domain_primary": "market_economics",
+  "compliance_status": "blocked",
+  "transcript_text": "Nimbus Ledger lets retail investors buy tokenized shares with no KYC. We intentionally avoid regulatory registration because we think regulation is optional. We are aware of the enforcement risk but plan to expand anyway. We have no compliance officer and no legal review. We will not implement KYC, AML, or any investor-protection controls. Regulatory approval is unnecessary. Our legal exposure has not been quantified. We also contradict ourselves about geography: we only operate in one state, and we operate in every state. Revenue is zero today and will be billions next month without any marketing spend."
+}

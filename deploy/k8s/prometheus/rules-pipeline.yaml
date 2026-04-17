@@ -1,0 +1,91 @@
+# Prompt 18 pipeline-stage PrometheusRule stub (Fund workflow orchestrator).
+#
+# Additive. Not included in the default deploy/k8s kustomization (see
+# deploy/k8s/kustomization.yaml). Apply only when the cluster supports
+# monitoring.coreos.com/PrometheusRule and scrapes
+# coherence_fund_pipeline_* metrics from the textfile collector
+# configured via COHERENCE_FUND_PIPELINE_TELEMETRY_PROMETHEUS_TEXTFILE_PATH.
+#
+# Before apply:
+# - Set metadata.namespace to your workload namespace.
+# - Update labels (team, severity, region) for your Alertmanager routing.
+# - Tune expr thresholds to match docs/ops/slo_metrics.md.
+#
+#   kubectl apply -f deploy/k8s/prometheus/rules-pipeline.yaml
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: coherence-fund-pipeline-slo
+  namespace: coherence-fund
+  labels:
+    role: alert-rules
+    app.kubernetes.io/name: coherence-fund
+    release: coherence-fund
+spec:
+  groups:
+    - name: coherence-fund-pipeline-slo
+      rules:
+        - record: coherence_fund:pipeline_stage_failure_ratio:15m
+          expr: |
+            sum by (stage) (
+              increase(coherence_fund_pipeline_stage_events_total{status="failure"}[15m])
+            )
+            /
+            clamp_min(
+              sum by (stage) (
+                increase(coherence_fund_pipeline_stage_events_total[15m])
+              ),
+              1
+            )
+        - record: coherence_fund:pipeline_stage_success_rate:15m
+          expr: |
+            1 - coherence_fund:pipeline_stage_failure_ratio:15m
+        - alert: CoherenceFundPipelineStageFailureRateHigh
+          expr: coherence_fund:pipeline_stage_failure_ratio:15m > 0.01
+          for: 15m
+          labels:
+            severity: warning
+            team: platform
+            service: coherence-fund
+            component: workflow
+          annotations:
+            summary: Fund workflow stage failure ratio is elevated
+            description: >
+              A workflow stage (label: stage) has exceeded a 1% failure
+              ratio over 15 minutes. See docs/ops/slo_metrics.md and
+              docs/ops/runbooks/production_observability_rollout.md.
+        - alert: CoherenceFundPipelineStageDurationBudgetBurn
+          expr: |
+            sum by (stage) (
+              increase(coherence_fund_pipeline_stage_warn_total[15m])
+            ) > 0
+          for: 15m
+          labels:
+            severity: warning
+            team: platform
+            service: coherence-fund
+            component: workflow
+          annotations:
+            summary: Fund workflow stage exceeded its latency warn budget
+            description: >
+              A workflow stage tripped
+              COHERENCE_FUND_PIPELINE_STAGE_DURATION_WARN_SECONDS at
+              least once in the last 15 minutes.
+        - alert: CoherenceFundPipelineStageSilent
+          expr: |
+            sum by (stage) (
+              increase(coherence_fund_pipeline_stage_events_total{stage=~"intake|notify"}[30m])
+            ) == 0
+          for: 30m
+          labels:
+            severity: warning
+            team: platform
+            service: coherence-fund
+            component: workflow
+          annotations:
+            summary: Fund workflow orchestrator appears idle
+            description: >
+              No intake or notify stage events observed in 30 minutes
+              across the fleet. Inspect the worker fleet and textfile
+              collector. See docs/ops/slo_metrics.md.

@@ -1,0 +1,111 @@
+# Scheduled governance attestation aging reports and reminder summaries from baselines
+# (change_review.last_baseline_approved_at). Independent of promotion workflows.
+# No external network beyond checkout / Python setup; reporter reads only local JSON.
+#
+# Optional baselines: UNCERTAINTY_GOVERNANCE_POLICY_BASELINES_JSON on environment
+# uncertainty-governance-attestation-lifecycle; otherwise the committed example JSON is used.
+# Configure required reviewers on that environment for reviewer governance.
+#
+# Webhook delivery receipts (canary/prod probes): job uses the same environment for optional
+# GOVERNANCE_ESCALATION_RECEIPT_HMAC_KEY and GOVERNANCE_ESCALATION_ROUTING_MAP_JSON (private map).
+# Scheduled runs force dry-run probes; optional workflow_dispatch input enables live POST when
+# URLs resolve on the runner.
+
+name: Uncertainty attestation lifecycle
+
+on:
+  schedule:
+    - cron: "45 6 * * 2"
+  workflow_dispatch:
+    inputs:
+      governance_webhook_verify_live_post:
+        description: "Manual runs only: POST canonical delivery probes to resolved webhook URLs (ops-approved)."
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  attestation-aging-report:
+    name: Governance attestation aging report
+    uses: ./.github/workflows/reusable-governance-attestation-check.yml
+    with:
+      check_kind: attestation_aging
+      governance_environment_slug: uncertainty-governance-attestation-lifecycle
+    secrets: inherit
+    environment: uncertainty-governance-attestation-lifecycle
+
+  # Recurring, network-free proof that canary/prod escalation channels resolve from the routing map.
+  governance-escalation-routing-proof:
+    name: Governance escalation routing proof (canary/prod)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Emit canary/prod escalation routing proof
+        env:
+          GOVERNANCE_ESCALATION_ROUTING_MAP_JSON: deploy/ops/governance-attestation-escalation-routing-map.example.json
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          python deploy/scripts/route_governance_attestation_escalation.py emit-routing-proof
+
+      - name: Upload governance escalation routing proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-escalation-routing-proof
+          path: artifacts/governance_escalation_routing_proof.json
+          if-no-files-found: error
+
+  governance-escalation-webhook-delivery-receipt:
+    name: Governance escalation webhook delivery receipt (canary/prod)
+    runs-on: ubuntu-latest
+    needs: []
+    environment: uncertainty-governance-attestation-lifecycle
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Resolve escalation routing map path
+        id: gov_map
+        env:
+          MAP_BODY: ${{ secrets.GOVERNANCE_ESCALATION_ROUTING_MAP_JSON }}
+        run: |
+          set -euo pipefail
+          if [ -n "${MAP_BODY:-}" ]; then
+            printf '%s' "${MAP_BODY}" > "${RUNNER_TEMP}/governance-attestation-escalation-routing-map.private.json"
+            echo "map_path=${RUNNER_TEMP}/governance-attestation-escalation-routing-map.private.json" >> "${GITHUB_OUTPUT}"
+          else
+            echo "map_path=${GITHUB_WORKSPACE}/deploy/ops/governance-attestation-escalation-routing-map.example.json" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Emit canary/prod webhook delivery receipt
+        env:
+          GOVERNANCE_ESCALATION_RECEIPT_HMAC_KEY: ${{ secrets.GOVERNANCE_ESCALATION_RECEIPT_HMAC_KEY }}
+          GOVERNANCE_ESCALATION_WEBHOOK_VERIFY_FORCE_DRY_RUN: ${{ github.event_name != 'workflow_dispatch' && 'true' || 'false' }}
+          GOVERNANCE_ESCALATION_WEBHOOK_VERIFY_LIVE_POST: ${{ github.event_name == 'workflow_dispatch' && inputs.governance_webhook_verify_live_post && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          python deploy/scripts/route_governance_attestation_escalation.py emit-webhook-delivery-receipt \
+            --map-json "${{ steps.gov_map.outputs.map_path }}" \
+            --webhook-receipt-out artifacts/governance_escalation_webhook_delivery_receipt.json
+
+      - name: Upload governance escalation webhook delivery receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-escalation-webhook-delivery-receipt
+          path: artifacts/governance_escalation_webhook_delivery_receipt.json
+          if-no-files-found: error

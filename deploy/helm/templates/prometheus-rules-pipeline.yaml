@@ -1,0 +1,102 @@
+{{- /*
+Prompt 18 pipeline-stage PrometheusRule stub (Fund workflow orchestrator).
+
+Additive. Not rendered unless .Values.prometheusRules.enabled is true,
+exactly like the worker-slo stub at
+deploy/helm/coherence-fund/templates/prometheus-rules.yaml. Copy this
+file into the active chart's templates/ directory (or symlink it) when
+you are ready to deploy pipeline-stage alerts alongside the existing
+worker-slo rules; it is kept in deploy/helm/templates/ per the prompt 18
+scope so the core chart stays untouched.
+
+Metric names below match docs/ops/slo_metrics.md and are populated by
+COHERENCE_FUND_PIPELINE_TELEMETRY_PROMETHEUS_TEXTFILE_PATH in the
+fund workers.
+*/ -}}
+{{- if and .Values.prometheusRules .Values.prometheusRules.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "coherence-fund.fullname" . }}-pipeline-slo
+  {{- if .Values.prometheusRules.namespace }}
+  namespace: {{ .Values.prometheusRules.namespace | quote }}
+  {{- else }}
+  namespace: {{ .Release.Namespace }}
+  {{- end }}
+  labels:
+    app.kubernetes.io/name: {{ include "coherence-fund.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    helm.sh/chart: {{ printf "%s-%s" .Chart.Name (.Chart.Version | replace "+" "_") | quote }}
+    {{- with .Values.prometheusRules.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: coherence-fund-pipeline-slo
+      rules:
+        # Recording rules: per-stage failure ratio over the last 15
+        # minutes. Consumers can alert on this series without having
+        # to redo the increase() arithmetic.
+        - record: coherence_fund:pipeline_stage_failure_ratio:15m
+          expr: |
+            sum by (stage) (
+              increase(coherence_fund_pipeline_stage_events_total{status="failure"}[15m])
+            )
+            /
+            clamp_min(
+              sum by (stage) (
+                increase(coherence_fund_pipeline_stage_events_total[15m])
+              ),
+              1
+            )
+        - record: coherence_fund:pipeline_stage_success_rate:15m
+          expr: |
+            1 - coherence_fund:pipeline_stage_failure_ratio:15m
+        # Alerts: keep severity + team labels aligned with the
+        # existing worker-slo stub via the shared helper partial.
+        - alert: CoherenceFundPipelineStageFailureRateHigh
+          expr: coherence_fund:pipeline_stage_failure_ratio:15m > 0.01
+          for: 15m
+          labels:
+            {{- include "coherence-fund.prometheusRuleAlertLabels" . | nindent 12 }}
+            component: workflow
+          annotations:
+            summary: Fund workflow stage failure ratio is elevated
+            description: >
+              A workflow stage (label: stage) has exceeded a 1% failure
+              ratio over 15 minutes. See docs/ops/slo_metrics.md and
+              docs/ops/runbooks/production_observability_rollout.md.
+        - alert: CoherenceFundPipelineStageDurationBudgetBurn
+          expr: |
+            sum by (stage) (
+              increase(coherence_fund_pipeline_stage_warn_total[15m])
+            ) > 0
+          for: 15m
+          labels:
+            {{- include "coherence-fund.prometheusRuleAlertLabels" . | nindent 12 }}
+            component: workflow
+          annotations:
+            summary: Fund workflow stage exceeded its latency warn budget
+            description: >
+              A workflow stage tripped
+              COHERENCE_FUND_PIPELINE_STAGE_DURATION_WARN_SECONDS at
+              least once in the last 15 minutes. Inspect the stage
+              label and correlate with P95 latency in Grafana.
+        - alert: CoherenceFundPipelineStageSilent
+          expr: |
+            sum by (stage) (
+              increase(coherence_fund_pipeline_stage_events_total{stage=~"intake|notify"}[30m])
+            ) == 0
+          for: 30m
+          labels:
+            {{- include "coherence-fund.prometheusRuleAlertLabels" . | nindent 12 }}
+            component: workflow
+          annotations:
+            summary: Fund workflow orchestrator appears idle
+            description: >
+              No intake or notify stage events observed in 30 minutes
+              across the fleet. Either the orchestrator is paused or
+              the telemetry textfile sink has stopped being written.
+              See docs/ops/slo_metrics.md.
+{{- end }}

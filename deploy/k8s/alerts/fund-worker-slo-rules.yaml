@@ -1,0 +1,138 @@
+# Optional PrometheusRule for fund worker SLO signals (Prometheus Operator).
+# Not included in the default kustomization; apply when your cluster supports
+# monitoring.coreos.com/PrometheusRule and scrapes coherence_fund_* metrics.
+#
+# Before apply:
+# - Set metadata.namespace to your workload namespace (e.g. coherence-fund).
+# - Add or adjust labels for Alertmanager routing (team, severity, region, etc.).
+# - Tune expr thresholds to match docs/ops/slo_threshold_standards.md.
+#
+# kubectl apply -f deploy/k8s/alerts/fund-worker-slo-rules.yaml
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: coherence-fund-worker-slo
+  namespace: coherence-fund
+  labels:
+    role: alert-rules
+    app.kubernetes.io/name: coherence-fund
+    release: coherence-fund
+spec:
+  groups:
+    - name: coherence-fund-worker-slo
+      rules:
+        - alert: CoherenceFundScoringQueueDepthHigh
+          expr: max(coherence_fund_scoring_eligible_queue_depth) > 100
+          for: 15m
+          labels:
+            severity: warning
+            team: platform
+            service: coherence-fund
+            component: scoring
+          annotations:
+            summary: Scoring eligible queue depth is elevated
+            description: >
+              max(coherence_fund_scoring_eligible_queue_depth) has been above 100 for 15m.
+              See docs/ops/runbooks/production_observability_rollout.md
+        - alert: CoherenceFundOutboxPendingHigh
+          expr: max(coherence_fund_outbox_pending_dispatchable) > 5000
+          for: 15m
+          labels:
+            severity: warning
+            team: platform
+            service: coherence-fund
+            component: outbox
+          annotations:
+            summary: Outbox dispatchable backlog is elevated
+            description: >
+              max(coherence_fund_outbox_pending_dispatchable) has been above 5000 for 15m.
+              See docs/ops/runbooks/production_observability_rollout.md
+        - alert: CoherenceFundScoringOldestAgeHigh
+          expr: max(coherence_fund_scoring_oldest_eligible_age_seconds) > 1800
+          for: 15m
+          labels:
+            severity: warning
+            team: platform
+            service: coherence-fund
+            component: scoring
+          annotations:
+            summary: Oldest eligible scoring job age is high
+            description: >
+              max(coherence_fund_scoring_oldest_eligible_age_seconds) exceeds 1800s for 15m.
+              See docs/ops/slo_threshold_standards.md
+        - alert: CoherenceFundOutboxOldestAgeHigh
+          expr: max(coherence_fund_outbox_oldest_pending_age_seconds) > 3600
+          for: 15m
+          labels:
+            severity: warning
+            team: platform
+            service: coherence-fund
+            component: outbox
+          annotations:
+            summary: Oldest dispatchable outbox row age is high
+            description: >
+              max(coherence_fund_outbox_oldest_pending_age_seconds) exceeds 3600s for 15m.
+              See docs/ops/slo_threshold_standards.md
+        - alert: CoherenceFundScoringFailedDLQElevated
+          expr: max(coherence_fund_scoring_failed_dlq) > 5
+          for: 10m
+          labels:
+            severity: critical
+            team: platform
+            service: coherence-fund
+            component: scoring
+          annotations:
+            summary: Scoring terminal failure count is elevated
+            description: >
+              max(coherence_fund_scoring_failed_dlq) above 5 for 10m.
+              See docs/ops/runbooks/production_observability_rollout.md
+        - alert: CoherenceFundOutboxFailedDLQElevated
+          expr: max(coherence_fund_outbox_failed_dlq) > 10
+          for: 10m
+          labels:
+            severity: critical
+            team: platform
+            service: coherence-fund
+            component: outbox
+          annotations:
+            summary: Outbox terminal failure count is elevated
+            description: >
+              max(coherence_fund_outbox_failed_dlq) above 10 for 10m.
+              See docs/ops/runbooks/production_observability_rollout.md
+        - alert: CoherenceFundWorkerOpsWarnQueueDepth
+          expr: max by (component) (coherence_fund_worker_ops_warn_queue_depth) > 0
+          for: 10m
+          labels:
+            severity: warning
+            team: platform
+            service: coherence-fund
+          annotations:
+            summary: Worker in-process queue depth warning flag is set
+            description: >
+              In-process threshold COHERENCE_FUND_*_OPS_QUEUE_WARN_DEPTH fired for a worker.
+              See docs/ops/slo_threshold_standards.md
+        - alert: CoherenceFundWorkerOpsWarnOldestLatency
+          expr: max by (component) (coherence_fund_worker_ops_warn_oldest_latency) > 0
+          for: 10m
+          labels:
+            severity: warning
+            team: platform
+            service: coherence-fund
+          annotations:
+            summary: Worker in-process oldest-age warning flag is set
+            description: >
+              In-process threshold COHERENCE_FUND_*_OPS_OLDEST_WARN_SECONDS fired.
+              See docs/ops/slo_threshold_standards.md
+        - alert: CoherenceFundWorkerOpsWarnFailedDLQ
+          expr: max by (component) (coherence_fund_worker_ops_warn_failed_dlq) > 0
+          for: 10m
+          labels:
+            severity: warning
+            team: platform
+            service: coherence-fund
+          annotations:
+            summary: Worker in-process DLQ warning flag is set
+            description: >
+              In-process threshold COHERENCE_FUND_*_OPS_FAILED_DLQ_WARN_COUNT fired.
+              See docs/ops/slo_threshold_standards.md

@@ -1,0 +1,675 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment_profile:
+        description: "Secret manager provider profile"
+        required: true
+        default: aws
+        type: choice
+        options:
+          - aws
+          - gcp
+          - vault
+      bootstrap_secret_ref:
+        description: "Bootstrap admin secret reference used for preflight probe"
+        required: true
+        type: string
+      deploy_target:
+        description: "Deployment target"
+        required: true
+        default: helm
+        type: choice
+        options:
+          - helm
+          - k8s
+          - systemd
+      strict_policy:
+        description: "Enforce strict provider credential policy in preflight"
+        required: false
+        default: true
+        type: boolean
+      allow_static_credentials:
+        description: "Allow static provider credentials (normally false)"
+        required: false
+        default: false
+        type: boolean
+      aws_region:
+        description: "AWS region for preflight/deploy"
+        required: false
+        default: us-east-1
+        type: string
+      aws_role_to_assume:
+        description: "Optional AWS role ARN for OIDC"
+        required: false
+        type: string
+      gcp_workload_identity_provider:
+        description: "Optional GCP workload identity provider resource"
+        required: false
+        type: string
+      gcp_service_account:
+        description: "Optional GCP service account email"
+        required: false
+        type: string
+      vault_addr:
+        description: "Vault HTTPS address (required when profile=vault)"
+        required: false
+        type: string
+      k8s_namespace:
+        description: "Kubernetes namespace for k8s/helm deploy targets"
+        required: false
+        default: coherence-fund-prod
+        type: string
+      k8s_overlay:
+        description: "Kustomize overlay path suffix for k8s target"
+        required: false
+        default: prod
+        type: choice
+        options:
+          - prod
+          - prod-redis
+          - prod-sqs
+      helm_release_name:
+        description: "Helm release name for helm target"
+        required: false
+        default: coherence-fund
+        type: string
+      helm_broker_profile:
+        description: "Optional Helm broker values overlay"
+        required: false
+        default: kafka
+        type: choice
+        options:
+          - kafka
+          - redis
+          - sqs
+      systemd_host:
+        description: "SSH host for systemd deploy target"
+        required: false
+        type: string
+      systemd_user:
+        description: "SSH user for systemd deploy target"
+        required: false
+        default: ubuntu
+        type: string
+      systemd_project_path:
+        description: "Remote project path for systemd target"
+        required: false
+        default: /opt/coherence_engine
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Deterministic on-call preconditions (same checks as oncall-route-verification safe job).
+  # Runs in this workflow so releases do not depend on artifacts from scheduled runs.
+  oncall_release_gate:
+    name: On-call policy & drill gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,fund-workers]"
+          python -m pip install "PyYAML>=6.0"
+
+      # Latest run of oncall-route-verification that uploaded oncall-live-webhook-drill (live POST path).
+      - name: Live-drill evidence freshness (GitHub Actions metadata)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ONCALL_LIVE_DRILL_EVIDENCE_MAX_AGE_HOURS: ${{ vars.ONCALL_LIVE_DRILL_EVIDENCE_MAX_AGE_HOURS }}
+          ONCALL_LIVE_DRILL_RUNS_BRANCH: ${{ vars.ONCALL_LIVE_DRILL_RUNS_BRANCH }}
+        run: |
+          python <<'PY'
+          import json
+          import os
+          import pathlib
+          import subprocess
+          import sys
+          from datetime import datetime, timezone
+
+          repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
+          if not repo:
+              print("GITHUB_REPOSITORY is unset", file=sys.stderr)
+              sys.exit(1)
+
+          raw_max = (os.environ.get("ONCALL_LIVE_DRILL_EVIDENCE_MAX_AGE_HOURS") or "").strip()
+          try:
+              max_age_h = float(raw_max) if raw_max else 168.0
+          except ValueError:
+              print(
+                  f"Invalid vars.ONCALL_LIVE_DRILL_EVIDENCE_MAX_AGE_HOURS={raw_max!r}; expected a number (hours).",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          if max_age_h <= 0:
+              print("ONCALL_LIVE_DRILL_EVIDENCE_MAX_AGE_HOURS must be positive.", file=sys.stderr)
+              sys.exit(1)
+
+          branch = (os.environ.get("ONCALL_LIVE_DRILL_RUNS_BRANCH") or "").strip() or "main"
+          workflow_file = "oncall-route-verification.yml"
+          artifact_name = "oncall-live-webhook-drill"
+          max_seconds = max_age_h * 3600.0
+
+          def gh_api(path_qs: str) -> dict:
+              url = f"repos/{repo}/actions/{path_qs}"
+              out = subprocess.run(
+                  ["gh", "api", url],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              )
+              return json.loads(out.stdout)
+
+          def parse_ts(s: str) -> datetime:
+              return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+          runs_url = (
+              f"workflows/{workflow_file}/runs"
+              f"?branch={branch}&per_page=30&status=completed"
+          )
+          try:
+              bundle = gh_api(runs_url)
+          except subprocess.CalledProcessError as e:
+              print(e.stderr or e.stdout or str(e), file=sys.stderr)
+              print(
+                  "Release gate: could not list workflow runs (need actions:read on GITHUB_TOKEN).",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          runs = bundle.get("workflow_runs") or []
+          now = datetime.now(timezone.utc)
+          found_run = None
+          found_art_ts = None
+
+          for run in runs:
+              if (run.get("conclusion") or "").lower() != "success":
+                  continue
+              rid = run.get("id")
+              if rid is None:
+                  continue
+              try:
+                  art_bundle = gh_api(f"runs/{rid}/artifacts")
+              except subprocess.CalledProcessError:
+                  continue
+              for art in art_bundle.get("artifacts") or []:
+                  if art.get("name") == artifact_name:
+                      created = art.get("created_at") or run.get("updated_at")
+                      if not created:
+                          continue
+                      found_run = run
+                      found_art_ts = parse_ts(created)
+                      break
+              if found_run is not None:
+                  break
+
+          state_dir = pathlib.Path("artifacts/oncall")
+          state_dir.mkdir(parents=True, exist_ok=True)
+          state_path = state_dir / "live-drill-evidence-state.json"
+
+          if found_run is None or found_art_ts is None:
+              print(
+                  "Release gate FAILED: no successful oncall-route-verification run on "
+                  f"branch={branch!r} with Actions artifact "
+                  f"{artifact_name!r} (live webhook drill evidence).\n"
+                  "Produce evidence by running workflow On-call route verification with a live POST "
+                  "(secret ONCALL_ROUTE_VERIFICATION_WEBHOOK_URL and manual run_live_webhook_drill, "
+                  "or scheduled with vars.ONCALL_SCHEDULED_LIVE_PROVIDER_DRILL=true outside quiet hours).",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          age_s = (now - found_art_ts).total_seconds()
+          stale = age_s > max_seconds
+          state = {
+              "evidence_found": True,
+              "stale": stale,
+              "artifact_name": artifact_name,
+              "workflow_file": workflow_file,
+              "branch": branch,
+              "max_age_hours": max_age_h,
+              "evidence_created_at": found_art_ts.isoformat().replace("+00:00", "Z"),
+              "age_seconds": round(age_s, 3),
+              "workflow_run_id": found_run.get("id"),
+              "workflow_run_url": found_run.get("html_url"),
+              "workflow_run_updated_at": found_run.get("updated_at"),
+          }
+          state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+
+          if stale:
+              print(
+                  "Live-drill evidence is STALE (recorded for gate); next step applies strict window or approved snooze.\n"
+                  f"- artifact: {artifact_name}\n"
+                  f"- workflow run: {found_run.get('html_url')}\n"
+                  f"- evidence_created_at (UTC): {found_art_ts.isoformat()}\n"
+                  f"- age_hours: {age_s / 3600:.2f}\n"
+                  f"- max_age_hours (vars.ONCALL_LIVE_DRILL_EVIDENCE_MAX_AGE_HOURS, default 168): {max_age_h}\n"
+                  f"- runs branch filter (vars.ONCALL_LIVE_DRILL_RUNS_BRANCH, default main): {branch!r}",
+                  file=sys.stderr,
+              )
+          else:
+              print(
+                  "Live-drill evidence freshness OK:\n"
+                  f"- workflow run: {found_run.get('html_url')}\n"
+                  f"- evidence_created_at (UTC): {found_art_ts.isoformat()}\n"
+                  f"- age_hours: {age_s / 3600:.2f} (max {max_age_h}h)\n"
+                  f"- branch filter: {branch!r}"
+              )
+          PY
+
+      - name: Evaluate live-drill evidence gate (freshness + optional snooze)
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+          ONCALL_EVIDENCE_EXCEPTION_JSON: ${{ secrets.ONCALL_EVIDENCE_EXCEPTION_JSON }}
+          ONCALL_EVIDENCE_EXCEPTION_RELATIVE_PATH: ${{ vars.ONCALL_EVIDENCE_EXCEPTION_RELATIVE_PATH }}
+        run: |
+          python deploy/scripts/evaluate_oncall_evidence_exception.py \
+            --state artifacts/oncall/live-drill-evidence-state.json \
+            --decision-out artifacts/oncall/oncall-evidence-gate-decision.json \
+            --gate release
+
+      - name: Upload on-call evidence gate decision (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oncall-evidence-gate-decision-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/oncall/oncall-evidence-gate-decision.json
+          if-no-files-found: ignore
+
+      - name: Prepare artifact directory
+        run: mkdir -p artifacts/oncall
+
+      - name: Resolve private on-call route policy (secret or repo-relative path)
+        env:
+          ONCALL_ROUTE_POLICY_JSON: ${{ secrets.ONCALL_ROUTE_POLICY_JSON }}
+          ONCALL_ROUTE_POLICY_RELATIVE_PATH: ${{ vars.ONCALL_ROUTE_POLICY_RELATIVE_PATH }}
+        run: |
+          set -euo pipefail
+          target="${GITHUB_WORKSPACE}/artifacts/oncall/oncall-route-policy.private.json"
+          if [ -n "${ONCALL_ROUTE_POLICY_JSON}" ]; then
+            printf '%s' "${ONCALL_ROUTE_POLICY_JSON}" > "${target}"
+          elif [ -n "${ONCALL_ROUTE_POLICY_RELATIVE_PATH}" ]; then
+            src="${GITHUB_WORKSPACE}/${ONCALL_ROUTE_POLICY_RELATIVE_PATH}"
+            if [ ! -f "${src}" ]; then
+              echo "vars.ONCALL_ROUTE_POLICY_RELATIVE_PATH points to missing file: ${src}" >&2
+              exit 1
+            fi
+            cp "${src}" "${target}"
+          else
+            echo "Release on-call gate requires environment-owned private policy: set repository secret ONCALL_ROUTE_POLICY_JSON (full JSON) or variable ONCALL_ROUTE_POLICY_RELATIVE_PATH (path under the checkout)." >&2
+            exit 1
+          fi
+
+      - name: Verify on-call route policy (local JSON, no network)
+        run: |
+          python deploy/scripts/verify_oncall_route_policy.py \
+            --policy artifacts/oncall/oncall-route-policy.private.json \
+            --json-out artifacts/oncall/oncall-route-verification.json \
+            --fail-on-stale-escalation-ownership \
+            --fail-on-stale-oncall-route-policy \
+            --fail-on-stale-verification-evidence \
+            --require-escalation-rotation-ref
+
+      - name: Parse YAML templates (workflows + deploy)
+        run: |
+          python <<'PY'
+          import pathlib
+          import sys
+
+          import yaml
+
+          root = pathlib.Path(".")
+          paths = [
+              root / ".github/workflows/oncall-route-verification.yml",
+              root / ".github/workflows/uncertainty-recalibration.yml",
+              root / "deploy/k8s/configmap-env-template.yaml",
+              root / "deploy/helm/coherence-fund/values.yaml",
+              root / "deploy/helm/coherence-fund/values-prod.yaml",
+          ]
+          for p in paths:
+              if not p.is_file():
+                  print(f"missing: {p}", file=sys.stderr)
+                  sys.exit(1)
+              yaml.safe_load(p.read_text())
+              print(f"ok: {p}")
+          PY
+
+      - name: Static route template checks (expected alert env keys)
+        run: |
+          python <<'PY'
+          import pathlib
+          import sys
+
+          needle = "COHERENCE_FUND_OPS_ALERT_ROUTER_MODE"
+          files = [
+              pathlib.Path("deploy/systemd/coherence-fund.env.example"),
+              pathlib.Path("deploy/k8s/configmap-env-template.yaml"),
+              pathlib.Path("deploy/helm/coherence-fund/values.yaml"),
+          ]
+          for f in files:
+              text = f.read_text()
+              if needle not in text:
+                  print(f"missing {needle} in {f}", file=sys.stderr)
+                  sys.exit(1)
+              print(f"ok: {f}")
+          PY
+
+      - name: Alert routing unit tests
+        run: pytest tests/test_ops_alert_routing.py -q
+
+      - name: On-call route policy verifier tests
+        run: pytest tests/test_oncall_route_policy_verifier.py -q
+
+      - name: Synthetic file-mode drill (temp JSONL)
+        run: |
+          python <<'PY'
+          import json
+          import os
+          import tempfile
+          from pathlib import Path
+
+          from coherence_engine.server.fund.services import alert_routing
+          from coherence_engine.server.fund.services.alert_routing import route_worker_ops_alert
+
+          alert_routing.reset_alert_routing_state_for_tests()
+          with tempfile.TemporaryDirectory() as d:
+              out = Path(d) / "drill_alerts.jsonl"
+              os.environ["COHERENCE_FUND_OPS_ALERT_ROUTER_MODE"] = "file"
+              os.environ["COHERENCE_FUND_OPS_ALERT_FILE_PATH"] = str(out)
+              os.environ["COHERENCE_FUND_OPS_ALERT_COOLDOWN_SECONDS"] = "0"
+              payload = {
+                  "component": "ci_synthetic_drill",
+                  "warn": ["oncall_route_verification"],
+                  "drill": True,
+                  "source": "github_actions_release_oncall_gate",
+              }
+              route_worker_ops_alert(["oncall_route_verification"], payload)
+              line = out.read_text(encoding="utf-8").strip().splitlines()[-1]
+              row = json.loads(line)
+              assert row["schema"] == "coherence_fund_worker_ops_alert/v1"
+              assert "oncall_route_verification" in row["warn_tags"]
+          print("synthetic file drill ok")
+          PY
+
+      - name: Drill evidence JSONL + release-readiness summary
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          python <<'PY'
+          import json
+          import os
+          import time
+          from pathlib import Path
+
+          art = Path("artifacts/oncall")
+          ver_path = art / "oncall-route-verification.json"
+          verification = json.loads(ver_path.read_text(encoding="utf-8"))
+          decision_path = art / "oncall-evidence-gate-decision.json"
+          gate_decision = json.loads(decision_path.read_text(encoding="utf-8"))
+          evidence_path = art / "oncall-drill-evidence.jsonl"
+          now = time.time()
+          iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
+          lines = [
+              {
+                  "type": "oncall_evidence_gate_decision",
+                  "ts_unix": now,
+                  "ts_iso": iso,
+                  "github_event": os.environ.get("GITHUB_EVENT_NAME"),
+                  "github_run_id": os.environ.get("GITHUB_RUN_ID"),
+                  "decision": gate_decision,
+              },
+              {
+                  "type": "policy_verification",
+                  "ts_unix": now,
+                  "ts_iso": iso,
+                  "github_event": os.environ.get("GITHUB_EVENT_NAME"),
+                  "github_run_id": os.environ.get("GITHUB_RUN_ID"),
+                  "github_run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+                  "github_sha": os.environ.get("GITHUB_SHA"),
+                  "verification": verification,
+              },
+              {
+                  "type": "synthetic_file_drill",
+                  "ts_unix": now,
+                  "ts_iso": iso,
+                  "github_event": os.environ.get("GITHUB_EVENT_NAME"),
+                  "github_run_id": os.environ.get("GITHUB_RUN_ID"),
+                  "result": "pass",
+                  "schema": "coherence_fund_worker_ops_alert/v1",
+                  "warn_tags": ["oncall_route_verification"],
+              },
+          ]
+          evidence_path.write_text(
+              "".join(json.dumps(row, sort_keys=True) + "\n" for row in lines),
+              encoding="utf-8",
+          )
+
+          ok = verification.get("ok") is True
+          status = "PASS" if ok else "FAIL"
+          summary = art / "release-readiness-summary.md"
+          summary.write_text(
+              "\n".join(
+                  [
+                      "# On-call release-readiness (release workflow gate)",
+                      "",
+                      f"**Policy verification**: {status} (`error_count={verification.get('error_count')}`, `warning_count={verification.get('warning_count')}`).",
+                      "",
+                      "## Automated checks (this release run)",
+                      "",
+                      "- [x] `deploy/scripts/verify_oncall_route_policy.py` on private policy from `ONCALL_ROUTE_POLICY_JSON` / `ONCALL_ROUTE_POLICY_RELATIVE_PATH` (no outbound calls)",
+                      "- [x] YAML template parse (workflows + deploy)",
+                      "- [x] Static presence of `COHERENCE_FUND_OPS_ALERT_ROUTER_MODE` in templates",
+                      "- [x] `tests/test_ops_alert_routing.py`",
+                      "- [x] `tests/test_oncall_route_policy_verifier.py`",
+                      "- [x] Synthetic in-process file-mode drill (`coherence_fund_worker_ops_alert/v1`)",
+                      "- [x] Live-drill evidence freshness vs `vars.ONCALL_LIVE_DRILL_EVIDENCE_MAX_AGE_HOURS` (default 168h) on `vars.ONCALL_LIVE_DRILL_RUNS_BRANCH` (default `main`) via latest `oncall-live-webhook-drill` artifact from `oncall-route-verification.yml`",
+                      "- [x] Machine-readable gate decision `oncall-evidence-gate-decision.json` (strict window unless valid `secrets.ONCALL_EVIDENCE_EXCEPTION_JSON` / `vars.ONCALL_EVIDENCE_EXCEPTION_RELATIVE_PATH` snooze with approver + change-id + expiry)",
+                      "",
+                      "This artifact set is generated by the release workflow gate (not downloaded from other workflow runs).",
+                      "",
+                  ]
+              ),
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload on-call release gate artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: oncall-release-gate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/oncall/
+          if-no-files-found: error
+
+      - name: Job summary
+        run: |
+          {
+            echo "## On-call release gate"
+            echo "- Policy verification, YAML/static checks, routing tests, synthetic file drill (no mandatory external network)."
+            echo "- **Live-drill freshness**: latest \`oncall-live-webhook-drill\` from \`oncall-route-verification.yml\` on branch \`${{ vars.ONCALL_LIVE_DRILL_RUNS_BRANCH || 'main' }}\` must be within \`${{ vars.ONCALL_LIVE_DRILL_EVIDENCE_MAX_AGE_HOURS || '168' }}\` hours (override with repo vars), unless an approved snooze is configured (\`ONCALL_EVIDENCE_EXCEPTION_JSON\` / \`ONCALL_EVIDENCE_EXCEPTION_RELATIVE_PATH\`)."
+            echo "- Artifacts: \`oncall-evidence-gate-decision.json\`, \`live-drill-evidence-state.json\`, \`oncall-route-verification.json\`, \`oncall-drill-evidence.jsonl\`, \`release-readiness-summary.md\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  preflight_gate:
+    name: Preflight Gate
+    uses: ./.github/workflows/deploy-preflight-gate.yml
+    with:
+      environment_profile: ${{ inputs.environment_profile }}
+      bootstrap_secret_ref: ${{ inputs.bootstrap_secret_ref }}
+      strict_policy: ${{ inputs.strict_policy }}
+      allow_static_credentials: ${{ inputs.allow_static_credentials }}
+      aws_region: ${{ inputs.aws_region }}
+      aws_role_to_assume: ${{ inputs.aws_role_to_assume }}
+      gcp_workload_identity_provider: ${{ inputs.gcp_workload_identity_provider }}
+      gcp_service_account: ${{ inputs.gcp_service_account }}
+      vault_addr: ${{ inputs.vault_addr }}
+    secrets: inherit
+
+  deploy_production:
+    name: Deploy Production
+    runs-on: ubuntu-latest
+    needs: [preflight_gate, oncall_release_gate]
+    if: ${{ needs.preflight_gate.result == 'success' && needs.oncall_release_gate.result == 'success' }}
+    environment:
+      name: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup kubectl
+        if: ${{ inputs.deploy_target == 'helm' || inputs.deploy_target == 'k8s' }}
+        uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.30.0"
+
+      - name: Setup Helm
+        if: ${{ inputs.deploy_target == 'helm' }}
+        uses: azure/setup-helm@v4
+        with:
+          version: "v3.14.4"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,fund-workers]"
+
+      - name: Prepare kubeconfig
+        if: ${{ inputs.deploy_target == 'helm' || inputs.deploy_target == 'k8s' }}
+        run: |
+          if [ -z "${{ secrets.KUBECONFIG_B64 }}" ]; then
+            echo "KUBECONFIG_B64 secret is required for k8s/helm deploy targets" >&2
+            exit 1
+          fi
+          mkdir -p "$HOME/.kube"
+          printf "%s" "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Validate deploy target inputs
+        run: |
+          case "${{ inputs.deploy_target }}" in
+            helm|k8s)
+              if [ -z "${{ inputs.k8s_namespace }}" ]; then
+                echo "k8s_namespace is required for k8s/helm targets" >&2
+                exit 1
+              fi
+              ;;
+            systemd)
+              if [ -z "${{ inputs.systemd_host }}" ]; then
+                echo "systemd_host is required for systemd deploy target" >&2
+                exit 1
+              fi
+              ;;
+            *)
+              echo "Unsupported deploy_target=${{ inputs.deploy_target }}" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Deploy target (exact production commands)
+        run: |
+          echo "Preflight gate passed for profile=${{ inputs.environment_profile }}"
+          echo "Deploy target=${{ inputs.deploy_target }}"
+          case "${{ inputs.deploy_target }}" in
+            helm)
+              HELM_BROKER_VALUES="deploy/helm/coherence-fund/values-prod-${{ inputs.helm_broker_profile }}.yaml"
+              helm upgrade --install "${{ inputs.helm_release_name }}" deploy/helm/coherence-fund \
+                -n "${{ inputs.k8s_namespace }}" --create-namespace \
+                -f deploy/helm/coherence-fund/values-prod.yaml \
+                -f "${HELM_BROKER_VALUES}"
+              kubectl -n "${{ inputs.k8s_namespace }}" rollout status deployment --all --timeout=10m
+              kubectl -n "${{ inputs.k8s_namespace }}" get deploy
+              API_SVC="$(kubectl -n "${{ inputs.k8s_namespace }}" get svc -o name | rg "${{ inputs.helm_release_name }}.*api" | head -n 1)"
+              if [ -z "${API_SVC}" ]; then
+                echo "Unable to locate API service for secret-manager readiness probe" >&2
+                exit 1
+              fi
+              kubectl -n "${{ inputs.k8s_namespace }}" port-forward "${API_SVC}" 18010:8010 >/tmp/pf.log 2>&1 &
+              PF_PID=$!
+              sleep 5
+              curl -fsS "http://127.0.0.1:18010/secret-manager/ready"
+              kill "${PF_PID}" || true
+              ;;
+            k8s)
+              kubectl apply -k "deploy/k8s/overlays/${{ inputs.k8s_overlay }}"
+              kubectl -n "${{ inputs.k8s_namespace }}" rollout status deployment --all --timeout=10m
+              kubectl -n "${{ inputs.k8s_namespace }}" get deploy
+              API_DEPLOY="$(kubectl -n "${{ inputs.k8s_namespace }}" get deploy -o name | rg "coherence-fund-api" | head -n 1)"
+              if [ -z "${API_DEPLOY}" ]; then
+                echo "Unable to locate API deployment for secret-manager readiness probe" >&2
+                exit 1
+              fi
+              kubectl -n "${{ inputs.k8s_namespace }}" port-forward "${API_DEPLOY}" 18010:8010 >/tmp/pf.log 2>&1 &
+              PF_PID=$!
+              sleep 5
+              curl -fsS "http://127.0.0.1:18010/secret-manager/ready"
+              kill "${PF_PID}" || true
+              ;;
+            systemd)
+              mkdir -p "$HOME/.ssh"
+              printf "%s\n" "${{ secrets.SYSTEMD_SSH_PRIVATE_KEY }}" > "$HOME/.ssh/id_ed25519"
+              chmod 600 "$HOME/.ssh/id_ed25519"
+              if [ -n "${{ secrets.SYSTEMD_SSH_KNOWN_HOSTS }}" ]; then
+                printf "%s\n" "${{ secrets.SYSTEMD_SSH_KNOWN_HOSTS }}" > "$HOME/.ssh/known_hosts"
+              else
+                ssh-keyscan -H "${{ inputs.systemd_host }}" >> "$HOME/.ssh/known_hosts"
+              fi
+              chmod 600 "$HOME/.ssh/known_hosts"
+              rsync -az --delete \
+                -e "ssh -i $HOME/.ssh/id_ed25519 -o StrictHostKeyChecking=yes" \
+                ./ "${{ inputs.systemd_user }}@${{ inputs.systemd_host }}:${{ inputs.systemd_project_path }}/"
+              ssh -i "$HOME/.ssh/id_ed25519" -o StrictHostKeyChecking=yes \
+                "${{ inputs.systemd_user }}@${{ inputs.systemd_host }}" \
+                "set -euo pipefail; \
+                 cd '${{ inputs.systemd_project_path }}'; \
+                 python3 -m venv venv || true; \
+                 source venv/bin/activate; \
+                 pip install -e '.[full,fund-workers]'; \
+                 alembic upgrade head; \
+                 make preflight-secret-manager; \
+                 sudo cp deploy/systemd/coherence-fund-api.service /etc/systemd/system/; \
+                 sudo cp deploy/systemd/coherence-fund-worker.service /etc/systemd/system/; \
+                 sudo cp deploy/systemd/coherence-fund-scoring-worker.service /etc/systemd/system/; \
+                 sudo cp deploy/systemd/coherence-fund-health-watchdog.service /etc/systemd/system/; \
+                 sudo cp deploy/systemd/coherence-fund-health-watchdog.timer /etc/systemd/system/; \
+                 sudo cp deploy/systemd/coherence-fund-health-watchdog.sh '${{ inputs.systemd_project_path }}/deploy/systemd/'; \
+                 sudo chmod +x '${{ inputs.systemd_project_path }}/deploy/systemd/coherence-fund-health-watchdog.sh'; \
+                 sudo systemctl daemon-reload; \
+                 sudo systemctl enable --now coherence-fund-api.service; \
+                 sudo systemctl enable --now coherence-fund-worker.service; \
+                 sudo systemctl enable --now coherence-fund-scoring-worker.service; \
+                 sudo systemctl enable --now coherence-fund-health-watchdog.timer; \
+                 curl -fsS http://127.0.0.1:8010/live; \
+                 curl -fsS http://127.0.0.1:8010/ready; \
+                 curl -fsS http://127.0.0.1:8010/secret-manager/ready"
+              ;;
+            *)
+              echo "Unsupported deploy_target=${{ inputs.deploy_target }}" >&2
+              exit 1
+              ;;
+          esac
+

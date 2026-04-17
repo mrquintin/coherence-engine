@@ -1,0 +1,10 @@
+{
+  "id": "brd_002_thin_evidence",
+  "category": "borderline",
+  "one_liner": "Larkfield Robotics retrofits legacy warehouse conveyor lines with a low-cost vision module.",
+  "use_of_funds_summary": "Convert two paid pilots into commercial deployments and ship the v2 module.",
+  "requested_check_usd": 300000,
+  "domain_primary": "market_economics",
+  "compliance_status": "clear",
+  "transcript_text": "Larkfield Robotics builds a vision module that retrofits legacy warehouse conveyor lines for misroute detection. We have two paid pilots running for 4 months at two regional 3PL facilities. Pilot A reports a 19 percent reduction in misroutes against the prior 90-day baseline, measured on 11,200 packages. Pilot B has been running 6 weeks and the data is not yet conclusive. Our hardware bill of materials is 1,840 dollars per module and we sell at 4,400 dollars with a 12-month service contract at 1,200 dollars per year. Gross margin estimates are preliminary and based on small lot sizes. We have not yet validated unit economics at scale and our customer acquisition cost is unknown beyond the two pilots. The 300,000 dollar check funds converting both pilots into commercial deployments and shipping the v2 module which adds package weight estimation. The team includes two robotics engineers from larger automation vendors and a former 3PL operations lead. We acknowledge the evidence base is thin and the path to repeatable enterprise sales is not yet proven."
+}

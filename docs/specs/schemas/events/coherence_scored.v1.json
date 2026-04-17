@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coherence.engine/specs/schemas/events/coherence_scored.v1.json",
+  "title": "CoherenceScoredPayloadV1",
+  "type": "object",
+  "required": [
+    "application_id",
+    "coherence_result_id",
+    "absolute_coherence",
+    "baseline_coherence",
+    "coherence_superiority",
+    "coherence_superiority_ci95",
+    "layer_scores",
+    "anti_gaming_score",
+    "model_versions"
+  ],
+  "properties": {
+    "application_id": {"type": "string", "minLength": 1},
+    "coherence_result_id": {"type": "string", "minLength": 1},
+    "absolute_coherence": {"type": "number", "minimum": 0, "maximum": 1},
+    "baseline_coherence": {"type": "number", "minimum": 0, "maximum": 1},
+    "coherence_superiority": {"type": "number", "minimum": -1, "maximum": 1},
+    "coherence_superiority_ci95": {
+      "type": "object",
+      "required": ["lower", "upper"],
+      "properties": {
+        "lower": {"type": "number", "minimum": -1, "maximum": 1},
+        "upper": {"type": "number", "minimum": -1, "maximum": 1}
+      },
+      "additionalProperties": false
+    },
+    "layer_scores": {
+      "type": "object",
+      "required": ["contradiction", "argumentation", "embedding", "compression", "structural"],
+      "properties": {
+        "contradiction": {"type": "number", "minimum": 0, "maximum": 1},
+        "argumentation": {"type": "number", "minimum": 0, "maximum": 1},
+        "embedding": {"type": "number", "minimum": 0, "maximum": 1},
+        "compression": {"type": "number", "minimum": 0, "maximum": 1},
+        "structural": {"type": "number", "minimum": 0, "maximum": 1}
+      },
+      "additionalProperties": false
+    },
+    "anti_gaming_score": {"type": "number", "minimum": 0, "maximum": 1},
+    "model_versions": {
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    }
+  },
+  "allOf": [
+    {
+      "if": true,
+      "then": {
+        "properties": {
+          "coherence_superiority_ci95": {
+            "properties": {
+              "lower": {"type": "number"},
+              "upper": {"type": "number"}
+            }
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}
+

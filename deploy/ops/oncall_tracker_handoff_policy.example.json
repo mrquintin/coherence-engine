@@ -1,0 +1,20 @@
+{
+  "schema": "oncall_tracker_handoff_policy/v1",
+  "comment": "Optional overlay for tracker handoff retries, idempotency, and retryable HTTP codes. Copy to a private path or inject via secret ONCALL_TRACKER_HANDOFF_POLICY_JSON (overrides repo var ONCALL_TRACKER_HANDOFF_POLICY_PATH). validate_oncall_tracker_handoff.py emits governance_audit.policy_resolution, policy_drift_vs_builtin_defaults vs built-in clamps, and per-row response.reconciliation (redacted) in oncall-tracker-handoff-results.json. CI uses this example for deterministic contract checks.",
+  "defaults": {
+    "max_attempts": 4,
+    "retryable_http_statuses": [408, 429, 500, 502, 503, 504],
+    "backoff_initial_seconds": 1.0,
+    "backoff_max_seconds": 8.0,
+    "idempotency_mode": "run_env_payload"
+  },
+  "environments": {
+    "staging": {},
+    "production": {
+      "max_attempts": 5,
+      "retryable_http_statuses": [408, 429, 500, 502, 503, 504, 520],
+      "backoff_initial_seconds": 1.5,
+      "backoff_max_seconds": 16.0
+    }
+  }
+}

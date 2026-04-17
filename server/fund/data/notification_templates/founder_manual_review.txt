@@ -1,0 +1,26 @@
+Subject: {company_name} — your application is in manual review
+
+Hi {founder_name},
+
+Thank you for completing the intake interview for {company_name}.
+Our coherence-scored decision policy ({policy_version}) flagged
+your application (id: {application_id}) for manual partner review.
+
+Summary
+-------
+- Decision: manual_review
+- Coherence observed: {coherence_observed}
+- Coherence required: {threshold_required}
+- Margin: {margin}
+- Notable gates: {failed_gates_summary}
+
+What this means
+---------------
+Your application landed in the warning band of our policy. A
+partner will review the transcript and your numbers directly,
+and we will get back to you within 10 business days with either
+a pass, a clarifying request, or a final decline.
+
+No action is required from you right now.
+
+— The Fund

@@ -1,0 +1,91 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Applications — Coherence Fund Admin{% endblock %}
+
+{% block main %}
+  <section class="panel" id="applications-panel">
+    <h2>Applications</h2>
+    <p class="muted">
+      Showing {{ applications|length }} application(s){% if total is defined %}
+      of {{ total }}{% endif %}.
+      Page {{ page }} · page size {{ page_size }}.
+      <span class="muted">
+        Links open the per-application detail view (read-only).
+      </span>
+    </p>
+
+    {% if applications %}
+    <table id="applications-table">
+      <thead>
+        <tr>
+          <th>Application ID</th>
+          <th>Founder</th>
+          <th>Company</th>
+          <th>One-liner</th>
+          <th>Domain</th>
+          <th>Status</th>
+          <th>Mode</th>
+          <th>Decision</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in applications %}
+        <tr data-app-id="{{ row.id }}">
+          <td class="mono">
+            <a href="{{ admin_base }}/applications/{{ row.id }}">{{ row.id }}</a>
+          </td>
+          <td>{{ row.founder_name or "—" }}</td>
+          <td>{{ row.company_name or "—" }}</td>
+          <td>{{ row.one_liner }}</td>
+          <td class="mono">{{ row.domain_primary }}</td>
+          <td>
+            <span class="badge status-{{ row.status|lower }}">{{ row.status }}</span>
+          </td>
+          <td>
+            <span class="badge mode-{{ row.scoring_mode|lower }}">{{ row.scoring_mode }}</span>
+          </td>
+          <td>
+            {% if row.decision %}
+              <span class="badge status-{{ row.decision|lower }}">{{ row.decision }}</span>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+          <td class="mono">{{ row.created_at }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="fragment-empty">No applications yet.</p>
+    {% endif %}
+
+    <div class="pagination">
+      {% if page > 1 %}
+        <a
+          href="{{ admin_base }}/applications?page={{ page - 1 }}&amp;page_size={{ page_size }}"
+          hx-get="{{ admin_base }}/applications?page={{ page - 1 }}&amp;page_size={{ page_size }}"
+          hx-target="#applications-panel"
+          hx-select="#applications-panel"
+          hx-swap="outerHTML"
+        >&larr; previous</a>
+      {% else %}
+        <span class="muted">&larr; previous</span>
+      {% endif %}
+      <span class="muted">·</span>
+      {% if has_next %}
+        <a
+          href="{{ admin_base }}/applications?page={{ page + 1 }}&amp;page_size={{ page_size }}"
+          hx-get="{{ admin_base }}/applications?page={{ page + 1 }}&amp;page_size={{ page_size }}"
+          hx-target="#applications-panel"
+          hx-select="#applications-panel"
+          hx-swap="outerHTML"
+        >next &rarr;</a>
+      {% else %}
+        <span class="muted">next &rarr;</span>
+      {% endif %}
+      <span class="htmx-indicator">loading…</span>
+    </div>
+  </section>
+{% endblock %}

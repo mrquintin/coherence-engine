@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coherence-fund-api
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: api
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coherence-fund-worker
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: worker
+          resources:
+            requests:
+              cpu: "400m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          command:
+            - /bin/sh
+            - -lc
+            - >
+              python -m coherence_engine dispatch-outbox
+              --backend "${COHERENCE_FUND_OUTBOX_BACKEND}"
+              --run-mode loop
+              --batch-size 500
+              --poll-seconds 1
+              --topic-prefix "${COHERENCE_FUND_TOPIC_PREFIX}"
+              --kafka-bootstrap-servers "${KAFKA_BOOTSTRAP_SERVERS}"
+              --sqs-queue-url "${SQS_QUEUE_URL}"
+              --sqs-region "${AWS_REGION}"
+              --redis-url "${REDIS_URL}"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coherence-fund-scoring-worker
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: scoring-worker
+          resources:
+            requests:
+              cpu: "400m"
+              memory: "768Mi"
+            limits:
+              cpu: "2000m"
+              memory: "3Gi"
+          command:
+            - /bin/sh
+            - -lc
+            - >
+              python -m coherence_engine process-scoring-jobs
+              --run-mode loop
+              --max-jobs 200
+              --poll-seconds 1
+              --lease-seconds 120
+              --retry-base-seconds 5
+

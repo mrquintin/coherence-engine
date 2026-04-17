@@ -1,0 +1,30 @@
+[
+  {
+    "coherence_superiority": 0.01,
+    "outcome_superiority": 0.02,
+    "n_propositions": 10,
+    "transcript_quality": 0.95,
+    "n_contradictions": 0,
+    "layer_scores": {
+      "contradiction": 0.5,
+      "argumentation": 0.5,
+      "embedding": 0.5,
+      "compression": 0.5,
+      "structural": 0.5
+    }
+  },
+  {
+    "superiority": 0.02,
+    "observed_superiority": 0.03,
+    "n_propositions": 11,
+    "transcript_quality": 0.94,
+    "n_contradictions": 1,
+    "layer_scores": {
+      "contradiction": 0.45,
+      "argumentation": 0.55,
+      "embedding": 0.5,
+      "compression": 0.5,
+      "structural": 0.5
+    }
+  }
+]

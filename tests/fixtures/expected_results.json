@@ -1,0 +1,14 @@
+{
+  "coherent_essay": {
+    "min_composite": 0.40,
+    "max_composite": 1.0,
+    "min_propositions": 5,
+    "expected_contradictions": 0
+  },
+  "contradictory_pitch": {
+    "min_composite": 0.0,
+    "max_composite": 0.65,
+    "min_propositions": 5,
+    "expected_min_contradictions": 2
+  }
+}

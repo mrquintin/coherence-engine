@@ -1,0 +1,15 @@
+{
+  "schema_version": "anti-gaming-fixture-v1",
+  "notes": "One proposition is a near-verbatim copy of a canned accelerator template line; should trigger AG_TEMPLATE_OVERLAP.",
+  "propositions": [
+    {"id": "p1", "text": "We operate in a large and growing market with a proven team.", "prop_type": "premise"},
+    {"id": "p2", "text": "Our unique solution leverages cutting-edge AI to disrupt the industry at scale.", "prop_type": "claim"},
+    {"id": "p3", "text": "We have early traction with several design partners.", "prop_type": "premise"},
+    {"id": "p4", "text": "We are raising to accelerate growth and capture market share.", "prop_type": "claim"}
+  ],
+  "prior_corpus": [],
+  "templates": [
+    "Our unique solution leverages cutting-edge AI to disrupt the industry at scale.",
+    "We operate in a massive, rapidly expanding market with a world-class founding team."
+  ]
+}

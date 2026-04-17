@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "description": "Example environment ownership SLA for governance baseline approval age reports. Copy to a private path or inject via GOVERNANCE_ATTESTATION_SLA_POLICY secret.",
+  "defaults": {
+    "allowed_statuses": ["ok", "reminder"],
+    "max_age_days": 90
+  },
+  "environments": {
+    "prod": {
+      "allowed_statuses": ["ok"],
+      "max_age_days": 30
+    },
+    "production": {
+      "allowed_statuses": ["ok"],
+      "max_age_days": 30
+    },
+    "canary": {
+      "allowed_statuses": ["ok", "reminder"],
+      "max_age_days": 45
+    }
+  }
+}

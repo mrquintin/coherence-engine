@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "coherence-fund.fullname" . }}-scoring-worker
+spec:
+  replicas: {{ .Values.scoringWorker.replicas }}
+  selector:
+    matchLabels:
+      app: {{ include "coherence-fund.fullname" . }}-scoring-worker
+  template:
+    metadata:
+      labels:
+        app: {{ include "coherence-fund.fullname" . }}-scoring-worker
+    spec:
+      containers:
+        - name: scoring-worker
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -lc
+            - >
+              python -m coherence_engine process-scoring-jobs
+              --run-mode loop
+              --max-jobs {{ .Values.scoringWorker.maxJobs }}
+              --poll-seconds {{ .Values.scoringWorker.pollSeconds }}
+              --lease-seconds {{ .Values.scoringWorker.leaseSeconds }}
+              --retry-base-seconds {{ .Values.scoringWorker.retryBaseSeconds }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "coherence-fund.fullname" . }}-config
+            - secretRef:
+                name: {{ include "coherence-fund.fullname" . }}-secrets
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -lc
+                - python -m coherence_engine.server.fund.scoring_worker --healthcheck
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -lc
+                - python -m coherence_engine.server.fund.scoring_worker --healthcheck
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.scoringWorker.resources | nindent 12 }}

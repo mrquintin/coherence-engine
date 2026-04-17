@@ -1,0 +1,8 @@
+{
+  "schema_version": "normative-markers-v1",
+  "axes": {
+    "rights": ["rights", "freedom", "autonomy", "consent", "dignity"],
+    "utilitarian": ["outcome", "utility", "welfare", "efficient", "aggregate"],
+    "deontic": ["must", "ought", "obligation", "duty", "should"]
+  }
+}

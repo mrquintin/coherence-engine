@@ -1,0 +1,910 @@
+openapi: 3.1.0
+info:
+  title: Coherence Fund Orchestrator API
+  version: 0.1.0
+  description: First API contracts for automated pre-seed workflow.
+servers:
+  - url: /api/v1
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: getHealth
+      x-required-roles: ["public"]
+      responses:
+        "200":
+          description: Service health
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /live:
+    get:
+      summary: Liveness check
+      operationId: getLive
+      x-required-roles: ["public"]
+      responses:
+        "200":
+          description: Service liveness
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /ready:
+    get:
+      summary: Readiness check
+      operationId: getReady
+      x-required-roles: ["public"]
+      responses:
+        "200":
+          description: Service readiness
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+        "503":
+          $ref: "#/components/responses/ErrorResponse"
+  /secret-manager/ready:
+    get:
+      summary: Secret manager startup and reachability status
+      operationId: getSecretManagerReady
+      x-required-roles: ["public"]
+      responses:
+        "200":
+          description: Secret manager is reachable/configured/disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecretManagerReadyResponse"
+        "503":
+          description: Secret manager startup check failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecretManagerReadyResponse"
+  /applications:
+    post:
+      summary: Create application intake
+      operationId: createApplication
+      x-required-roles: ["analyst", "admin"]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateApplicationRequest"
+      responses:
+        "201":
+          description: Application created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateApplicationResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+  /applications/{application_id}/interview-sessions:
+    post:
+      summary: Start interview session
+      operationId: createInterviewSession
+      x-required-roles: ["analyst", "admin"]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ApplicationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInterviewSessionRequest"
+      responses:
+        "201":
+          description: Interview session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateInterviewSessionResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+  /applications/{application_id}/score:
+    post:
+      summary: Trigger scoring pipeline
+      operationId: triggerScoring
+      x-required-roles: ["analyst", "admin"]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ApplicationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TriggerScoringRequest"
+      responses:
+        "202":
+          description: Job queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TriggerScoringResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+  /applications/{application_id}/decision:
+    get:
+      summary: Get latest decision artifact
+      operationId: getDecision
+      x-required-roles: ["viewer", "analyst", "admin"]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ApplicationId"
+      responses:
+        "200":
+          description: Decision or pending state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetDecisionResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+  /applications/{application_id}/decision_artifact:
+    get:
+      summary: Fetch the persisted decision_artifact.v1 bundle
+      operationId: getDecisionArtifact
+      x-required-roles: ["viewer", "analyst", "admin"]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ApplicationId"
+      responses:
+        "200":
+          description: Decision artifact JSON (canonical bytes wrapped in envelope)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetDecisionArtifactResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+  /applications/{application_id}/mode:
+    post:
+      summary: Toggle scoring mode (enforce <-> shadow)
+      operationId: setScoringMode
+      x-required-roles: ["admin"]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ApplicationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetScoringModeRequest"
+      responses:
+        "200":
+          description: Mode updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetScoringModeResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ErrorResponse"
+  /workflow/{application_id}/run:
+    post:
+      summary: Start a fresh workflow orchestrator run
+      operationId: runWorkflow
+      x-required-roles: ["analyst", "admin"]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ApplicationId"
+      responses:
+        "202":
+          description: Workflow run completed or partially completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowRunResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/ErrorResponse"
+  /workflow/{application_id}/resume:
+    post:
+      summary: Resume the most recent non-succeeded workflow run
+      operationId: resumeWorkflow
+      x-required-roles: ["analyst", "admin"]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ApplicationId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResumeWorkflowRequest"
+      responses:
+        "202":
+          description: Workflow resume outcome
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowRunResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/ErrorResponse"
+  /notifications:
+    get:
+      summary: List notification log entries for an application
+      operationId: listNotifications
+      x-required-roles: ["viewer", "analyst", "admin"]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - name: application_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Application identifier to filter notifications by
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Paginated notification log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListNotificationsResponse"
+  /applications/{application_id}/escalation-packet:
+    post:
+      summary: Create escalation packet
+      operationId: createEscalationPacket
+      x-required-roles: ["admin"]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ApplicationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEscalationPacketRequest"
+      responses:
+        "201":
+          description: Escalation packet sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateEscalationPacketResponse"
+        "422":
+          $ref: "#/components/responses/ErrorResponse"
+  /admin/api-keys:
+    post:
+      summary: Create API key
+      operationId: createApiKey
+      x-required-roles: ["admin"]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateApiKeyRequest"
+      responses:
+        "201":
+          description: API key created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateApiKeyResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+    get:
+      summary: List API keys
+      operationId: listApiKeys
+      x-required-roles: ["admin"]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: API keys listed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListApiKeysResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+  /admin/api-keys/{key_id}/revoke:
+    post:
+      summary: Revoke API key
+      operationId: revokeApiKey
+      x-required-roles: ["admin"]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ApiKeyId"
+      responses:
+        "200":
+          description: API key revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevokeApiKeyResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+  /admin/api-keys/{key_id}/rotate:
+    post:
+      summary: Rotate API key
+      operationId: rotateApiKey
+      x-required-roles: ["admin"]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ApiKeyId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RotateApiKeyRequest"
+      responses:
+        "201":
+          description: API key rotated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateApiKeyResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    ApplicationId:
+      name: application_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Application identifier
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+    ApiKeyId:
+      name: key_id
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    ErrorResponse:
+      description: Standard error envelope
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+  schemas:
+    EnvelopeMeta:
+      type: object
+      required: [request_id]
+      properties:
+        request_id:
+          type: string
+    ErrorObject:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    ErrorEnvelope:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          type: "null"
+        error:
+          $ref: "#/components/schemas/ErrorObject"
+        meta:
+          $ref: "#/components/schemas/EnvelopeMeta"
+    FounderInput:
+      type: object
+      required: [full_name, email, company_name, country]
+      properties:
+        full_name: {type: string}
+        email: {type: string, format: email}
+        company_name: {type: string}
+        country: {type: string, minLength: 2}
+    StartupInput:
+      type: object
+      required: [one_liner, requested_check_usd, use_of_funds_summary, preferred_channel]
+      properties:
+        one_liner: {type: string}
+        requested_check_usd: {type: integer, minimum: 1}
+        use_of_funds_summary: {type: string}
+        preferred_channel:
+          type: string
+          enum: [phone, web_voice, async_voice]
+    ConsentInput:
+      type: object
+      required: [ai_assessment, recording, data_processing]
+      properties:
+        ai_assessment: {type: boolean}
+        recording: {type: boolean}
+        data_processing: {type: boolean}
+    CreateApplicationRequest:
+      type: object
+      required: [founder, startup, consent]
+      properties:
+        founder: {$ref: "#/components/schemas/FounderInput"}
+        startup: {$ref: "#/components/schemas/StartupInput"}
+        consent: {$ref: "#/components/schemas/ConsentInput"}
+    CreateApplicationResponse:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          type: object
+          required: [application_id, founder_id, status]
+          properties:
+            application_id: {type: string}
+            founder_id: {type: string}
+            status: {type: string}
+        error: {type: "null"}
+        meta: {$ref: "#/components/schemas/EnvelopeMeta"}
+    CreateInterviewSessionRequest:
+      type: object
+      required: [channel, locale]
+      properties:
+        channel:
+          type: string
+          enum: [phone, web_voice, async_voice]
+        locale:
+          type: string
+    CreateInterviewSessionResponse:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          type: object
+          required: [interview_id, session_token, routing]
+          properties:
+            interview_id: {type: string}
+            session_token: {type: string}
+            routing:
+              type: object
+              properties:
+                phone_number: {type: string}
+                webrtc_room_url: {type: string}
+        error: {type: "null"}
+        meta: {$ref: "#/components/schemas/EnvelopeMeta"}
+    TriggerScoringRequest:
+      type: object
+      required: [mode, dry_run]
+      properties:
+        mode:
+          type: string
+          enum: [standard, priority]
+        dry_run:
+          type: boolean
+        transcript_text:
+          type: string
+        transcript_uri:
+          type: string
+    TriggerScoringResponse:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          type: object
+          required: [job_id, status]
+          properties:
+            job_id: {type: string}
+            status: {type: string}
+        error: {type: "null"}
+        meta: {$ref: "#/components/schemas/EnvelopeMeta"}
+    FailedGate:
+      type: object
+      required: [gate, reason_code]
+      properties:
+        gate: {type: string}
+        reason_code: {type: string}
+    GetDecisionResponse:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          type: object
+          required:
+            [application_id, decision_id, decision, policy_version, threshold_required, coherence_observed, margin, failed_gates, updated_at]
+          properties:
+            application_id: {type: string}
+            decision_id: {type: string}
+            decision:
+              type: string
+              enum: [pass, fail, manual_review, pending]
+            policy_version: {type: string}
+            threshold_required: {type: number}
+            coherence_observed: {type: number}
+            margin: {type: number}
+            failed_gates:
+              type: array
+              items: {$ref: "#/components/schemas/FailedGate"}
+            updated_at:
+              type: string
+              format: date-time
+        error: {type: "null"}
+        meta: {$ref: "#/components/schemas/EnvelopeMeta"}
+    CreateEscalationPacketRequest:
+      type: object
+      required: [partner_email, include_calendar_link]
+      properties:
+        partner_email:
+          type: string
+          format: email
+        include_calendar_link:
+          type: boolean
+    CreateEscalationPacketResponse:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          type: object
+          required: [packet_id, packet_uri, status]
+          properties:
+            packet_id: {type: string}
+            packet_uri: {type: string}
+            status: {type: string}
+        error: {type: "null"}
+        meta: {$ref: "#/components/schemas/EnvelopeMeta"}
+    HealthResponse:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          type: object
+          required: [status, service, version]
+          properties:
+            status: {type: string}
+            service: {type: string}
+            version: {type: string}
+        error: {type: "null"}
+        meta: {$ref: "#/components/schemas/EnvelopeMeta"}
+    ReadyResponse:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          type: object
+          required: [status, database, service]
+          properties:
+            status: {type: string}
+            database: {type: string}
+            service: {type: string}
+        error: {type: "null"}
+        meta: {$ref: "#/components/schemas/EnvelopeMeta"}
+    SecretManagerReadyResponse:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          type: object
+          required: [status, provider, reachable, detail, service]
+          properties:
+            status:
+              type: string
+              enum: [ready, configured, disabled, failed, unknown]
+            provider: {type: string}
+            reachable: {type: boolean}
+            detail: {type: string}
+            checked_at:
+              type: string
+              format: date-time
+              nullable: true
+            service: {type: string}
+        error: {type: "null"}
+        meta: {$ref: "#/components/schemas/EnvelopeMeta"}
+    CreateApiKeyRequest:
+      type: object
+      required: [label, role]
+      properties:
+        label: {type: string}
+        role:
+          type: string
+          enum: [viewer, analyst, admin]
+        expires_in_days:
+          type: integer
+          minimum: 1
+        write_to_secret_manager:
+          type: boolean
+          default: false
+        secret_ref:
+          type: string
+          nullable: true
+    RotateApiKeyRequest:
+      type: object
+      properties:
+        expires_in_days:
+          type: integer
+          minimum: 1
+        write_to_secret_manager:
+          type: boolean
+          default: false
+        secret_ref:
+          type: string
+          nullable: true
+    ApiKeyRecord:
+      type: object
+      required: [id, label, role, is_active, fingerprint, created_by, created_at]
+      properties:
+        id: {type: string}
+        label: {type: string}
+        role:
+          type: string
+          enum: [viewer, analyst, admin]
+        is_active: {type: boolean}
+        fingerprint: {type: string}
+        created_by: {type: string}
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+    CreateApiKeyResponse:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          type: object
+          required: [id, token, label, role, is_active, fingerprint, created_at]
+          properties:
+            id: {type: string}
+            token: {type: string}
+            label: {type: string}
+            role:
+              type: string
+              enum: [viewer, analyst, admin]
+            is_active: {type: boolean}
+            expires_at:
+              type: string
+              format: date-time
+              nullable: true
+            fingerprint: {type: string}
+            created_at:
+              type: string
+              format: date-time
+        error: {type: "null"}
+        meta: {$ref: "#/components/schemas/EnvelopeMeta"}
+    ListApiKeysResponse:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          type: object
+          required: [keys]
+          properties:
+            keys:
+              type: array
+              items:
+                $ref: "#/components/schemas/ApiKeyRecord"
+        error: {type: "null"}
+        meta: {$ref: "#/components/schemas/EnvelopeMeta"}
+    RevokeApiKeyResponse:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          type: object
+          required: [key_id, status]
+          properties:
+            key_id: {type: string}
+            status: {type: string}
+        error: {type: "null"}
+        meta: {$ref: "#/components/schemas/EnvelopeMeta"}
+    GetDecisionArtifactResponse:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          type: object
+          required: [application_id, artifact_id, kind, payload]
+          properties:
+            application_id: {type: string}
+            artifact_id: {type: string}
+            kind:
+              type: string
+              enum: [decision_artifact]
+            decision_policy_version: {type: string}
+            created_at:
+              type: string
+              format: date-time
+            payload:
+              type: object
+              additionalProperties: true
+              description: Canonical decision_artifact.v1 bundle (validated upstream).
+        error: {type: "null"}
+        meta: {$ref: "#/components/schemas/EnvelopeMeta"}
+    SetScoringModeRequest:
+      type: object
+      required: [mode]
+      properties:
+        mode:
+          type: string
+          enum: [enforce, shadow]
+        force:
+          type: boolean
+          default: false
+          description: Bypass the enforce->shadow guard when a decision is already issued.
+    SetScoringModeResponse:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          type: object
+          required: [application_id, previous_mode, new_mode, changed]
+          properties:
+            application_id: {type: string}
+            previous_mode:
+              type: string
+              enum: [enforce, shadow]
+            new_mode:
+              type: string
+              enum: [enforce, shadow]
+            changed: {type: boolean}
+        error: {type: "null"}
+        meta: {$ref: "#/components/schemas/EnvelopeMeta"}
+    ResumeWorkflowRequest:
+      type: object
+      properties:
+        force:
+          type: boolean
+          default: false
+          description: Bypass the input_digest drift check when resuming.
+    WorkflowStepRecord:
+      type: object
+      required: [name, status]
+      properties:
+        name: {type: string}
+        status:
+          type: string
+          enum: [pending, running, succeeded, failed, skipped]
+        input_digest: {type: string}
+        output_digest: {type: string}
+        error: {type: string}
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+    WorkflowRunResponse:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          type: object
+          required: [run_id, application_id, status, steps]
+          properties:
+            run_id: {type: string}
+            application_id: {type: string}
+            status:
+              type: string
+              enum: [pending, running, succeeded, failed]
+            current_step: {type: string}
+            error: {type: string}
+            steps:
+              type: array
+              items:
+                $ref: "#/components/schemas/WorkflowStepRecord"
+        error: {type: "null"}
+        meta: {$ref: "#/components/schemas/EnvelopeMeta"}
+    NotificationLogEntry:
+      type: object
+      required: [id, application_id, template_id, channel, recipient, status, created_at]
+      properties:
+        id: {type: string}
+        application_id: {type: string}
+        template_id: {type: string}
+        channel: {type: string}
+        recipient: {type: string}
+        status:
+          type: string
+          enum: [pending, sent, failed, skipped]
+        error: {type: string}
+        created_at:
+          type: string
+          format: date-time
+        sent_at:
+          type: string
+          format: date-time
+          nullable: true
+    ListNotificationsResponse:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data:
+          type: object
+          required: [application_id, entries, limit, offset, total]
+          properties:
+            application_id: {type: string}
+            entries:
+              type: array
+              items:
+                $ref: "#/components/schemas/NotificationLogEntry"
+            limit: {type: integer}
+            offset: {type: integer}
+            total: {type: integer}
+        error: {type: "null"}
+        meta: {$ref: "#/components/schemas/EnvelopeMeta"}
+

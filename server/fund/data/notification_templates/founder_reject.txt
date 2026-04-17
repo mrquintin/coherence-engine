@@ -1,0 +1,24 @@
+Subject: {company_name} — update on your application
+
+Hi {founder_name},
+
+Thank you for completing the intake interview for {company_name}.
+Our coherence-scored decision policy ({policy_version}) did not
+advance your application (id: {application_id}) at this time.
+
+Summary
+-------
+- Decision: reject
+- Coherence observed: {coherence_observed}
+- Coherence required: {threshold_required}
+- Margin: {margin}
+- Notable gates: {failed_gates_summary}
+
+What this means
+---------------
+This decision reflects our deterministic policy applied to the
+current state of your interview transcript and is not a judgment
+about you or your team. You are welcome to apply again with new
+evidence in 90 days.
+
+— The Fund

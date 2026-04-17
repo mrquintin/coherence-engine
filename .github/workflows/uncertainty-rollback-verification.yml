@@ -1,0 +1,90 @@
+# Scheduled rollback-policy evaluation from a committed JSON health evidence artifact.
+# No external network; results are uploaded as workflow artifacts and GitHub step summary.
+
+name: Uncertainty rollback policy verification
+
+on:
+  schedule:
+    # Weekly: Tuesday 07:00 UTC (offset from Monday recalibration).
+    - cron: "0 7 * * 2"
+  workflow_dispatch:
+    inputs:
+      metrics_json:
+        description: "Path to health metrics JSON (repo-relative)"
+        required: false
+        default: "artifacts/examples/calibration_health_example.json"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  rollback-policy-from-evidence:
+    runs-on: ubuntu-latest
+    env:
+      # workflow_dispatch only; empty on schedule so the shell picks the default path.
+      METRICS_INPUT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.metrics_json || '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: python -m pip install -e ".[dev]"
+
+      - name: Evaluate rollback policy from evidence JSON
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          METRICS_PATH="${METRICS_INPUT:-artifacts/examples/calibration_health_example.json}"
+          echo "METRICS_PATH=${METRICS_PATH}" >> "${GITHUB_ENV}"
+          if [ ! -f "${METRICS_PATH}" ]; then
+            echo "::error::metrics file not found: ${METRICS_PATH}"
+            exit 1
+          fi
+          python -m coherence_engine uncertainty-profile rollback-policy-eval \
+            --metrics-json "${METRICS_PATH}" \
+            --min-coverage 0.90 \
+            --max-mean-width 0.20 \
+            --min-record-count 50 \
+            | tee artifacts/rollback_policy_decision.json
+
+      - name: Write summary for artifact and step summary
+        run: |
+          python <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path("artifacts")
+          d = json.loads((root / "rollback_policy_decision.json").read_text(encoding="utf-8"))
+          metrics_path = os.environ.get("METRICS_PATH", "artifacts/examples/calibration_health_example.json")
+          lines = [
+              "## Uncertainty rollback policy verification",
+              "",
+              f"- **metrics_json**: `{metrics_path}`",
+              f"- **should_rollback**: `{d['should_rollback']}`",
+              f"- **reasons**: `{d['reasons']!r}`",
+              "",
+              "Policy flags: `--min-coverage 0.90 --max-mean-width 0.20 --min-record-count 50` (static example passes).",
+          ]
+          text = "\n".join(lines) + "\n"
+          (root / "rollback_policy_summary.md").write_text(text, encoding="utf-8")
+          gh = os.environ.get("GITHUB_STEP_SUMMARY")
+          if gh:
+              with open(gh, "a", encoding="utf-8") as fh:
+                  fh.write(text)
+          PY
+
+      - name: Upload rollback policy report
+        uses: actions/upload-artifact@v4
+        with:
+          name: uncertainty-rollback-policy-report
+          path: |
+            artifacts/rollback_policy_decision.json
+            artifacts/rollback_policy_summary.md
+          if-no-files-found: error

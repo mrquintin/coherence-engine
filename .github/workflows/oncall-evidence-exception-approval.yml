@@ -1,0 +1,76 @@
+# Manual, environment-gated approval for on-call live-drill evidence exception/snooze records.
+# Configure GitHub Environments:
+#   - oncall-evidence-exception-approval-production
+#   - oncall-evidence-exception-approval-nonprod
+# with required reviewers. Validation is local (checkout + Python stdlib only): proposed JSON
+# is checked against the repo policy file, then an approval artifact is uploaded.
+#
+name: On-call evidence exception approval
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment (maps to gate production→release, nonprod→nonprod)"
+        required: true
+        type: choice
+        options:
+          - production
+          - nonprod
+      exception_json:
+        description: "Full exception/snooze JSON object (same schema as deploy/ops/oncall_evidence_exceptions.example.json)"
+        required: true
+        type: string
+      policy_relative_path:
+        description: "Repo-relative path to policy-as-code JSON"
+        required: false
+        default: deploy/ops/oncall_evidence_exception_policy.example.json
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  approve:
+    name: Validate & record approval (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: oncall-evidence-exception-approval-${{ inputs.environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Write proposed exception
+        env:
+          EXCEPTION_JSON: ${{ inputs.exception_json }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/oncall
+          printf '%s' "${EXCEPTION_JSON}" > artifacts/oncall/exception-proposed.json
+          python3 -c 'import json,sys; json.load(open("artifacts/oncall/exception-proposed.json"))'
+
+      - name: Validate against policy and emit approval artifact
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          policy_path="${GITHUB_WORKSPACE}/${{ inputs.policy_relative_path }}"
+          if [ ! -f "${policy_path}" ]; then
+            echo "::error::Policy file not found at ${policy_path}"
+            exit 1
+          fi
+          python3 deploy/scripts/evaluate_oncall_evidence_exception.py \
+            --approve-artifact-out artifacts/oncall/oncall-evidence-exception-approved.json \
+            --exception-path artifacts/oncall/exception-proposed.json \
+            --policy "${policy_path}" \
+            --approval-environment "${{ inputs.environment }}"
+
+      - name: Upload approved exception artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: oncall-evidence-exception-approved-${{ inputs.environment }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/oncall/oncall-evidence-exception-approved.json
+          if-no-files-found: error

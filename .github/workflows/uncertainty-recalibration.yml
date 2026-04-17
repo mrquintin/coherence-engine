@@ -1,0 +1,487 @@
+# Scheduled backtest + recalibration using governed historical data.
+# Optional manual promotion of the candidate profile (shadow / canary / prod) via workflow_dispatch.
+
+name: Uncertainty recalibration
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      promote_to_shadow:
+        description: "After calibration, promote candidate to shadow (legacy; mutually exclusive with canary/prod)"
+        required: false
+        default: false
+        type: boolean
+      promote_to_canary:
+        description: "After calibration, promote candidate to canary (mutually exclusive with shadow/prod)"
+        required: false
+        default: false
+        type: boolean
+      promote_to_prod:
+        description: "After calibration, promote candidate to prod (mutually exclusive; requires baseline path)"
+        required: false
+        default: false
+        type: boolean
+      prod_baseline_profile_repo_path:
+        description: "Repo-relative path to baseline calibration JSON (required when promote_to_prod is true)"
+        required: false
+        default: ""
+        type: string
+      governance_acknowledged:
+        description: "Required true for any promotion — confirms human review of candidate artifact and policy"
+        required: false
+        default: false
+        type: boolean
+      promotion_approval_token:
+        description: "Must match UNCERTAINTY_SHADOW_PROMOTION_TOKEN, UNCERTAINTY_CANARY_PROMOTION_TOKEN, or UNCERTAINTY_PROD_PROMOTION_TOKEN for the selected promotion"
+        required: false
+        default: ""
+        type: string
+      policy_owning_team_attestation:
+        description: "Canary/prod only — owning team (must match vars.UNCERTAINTY_POLICY_OWNING_TEAM when set)"
+        required: false
+        default: ""
+        type: string
+      policy_owner_attestor:
+        description: "Canary/prod only — attestor identity (person/service)"
+        required: false
+        default: ""
+        type: string
+      policy_baseline_approval_change_id:
+        description: "Canary/prod only — change/ticket id for approved baseline (e.g. CHG-1234)"
+        required: false
+        default: ""
+        type: string
+      policy_ownership_attestation_effective_date:
+        description: "Canary/prod only — ISO date YYYY-MM-DD when this ownership attestation was issued (rotation clock)"
+        required: false
+        default: ""
+        type: string
+      ownership_attestation_max_age_days:
+        description: "Optional override; empty uses vars.UNCERTAINTY_OWNERSHIP_ATTESTATION_MAX_AGE_DAYS or default 90"
+        required: false
+        default: ""
+        type: string
+      ownership_attestation_reminder_days_before_max:
+        description: "Optional override; empty uses vars.UNCERTAINTY_OWNERSHIP_ATTESTATION_REMINDER_DAYS_BEFORE_MAX or default 14"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  recalibrate:
+    runs-on: ubuntu-latest
+    environment: >-
+      ${{
+        github.event_name == 'workflow_dispatch' && inputs.promote_to_canary == true && 'uncertainty-governance-canary'
+        || github.event_name == 'workflow_dispatch' && inputs.promote_to_prod == true && 'uncertainty-governance-prod'
+        || 'uncertainty-governance-recalibration'
+      }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: python -m pip install -e ".[dev]"
+
+      - name: Validate historical export example (merge contract)
+        run: |
+          python -m coherence_engine uncertainty-profile validate-historical-export \
+            --input deploy/ops/uncertainty-historical-outcomes-export.example.json \
+            --require-standard-layer-keys
+
+      - name: Verify governed dataset integrity
+        run: |
+          python -m coherence_engine uncertainty-profile verify-dataset \
+            --dataset data/governed/uncertainty_historical_outcomes.jsonl \
+            --manifest data/governed/uncertainty_historical_outcomes.manifest.json
+
+      - name: Run calibrate-uncertainty
+        run: |
+          mkdir -p artifacts
+          python -m coherence_engine calibrate-uncertainty \
+            data/governed/uncertainty_historical_outcomes.jsonl \
+            --output artifacts/uncertainty_candidate_profile.json
+
+      - name: Upload candidate profile artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: uncertainty-candidate-profile
+          path: artifacts/uncertainty_candidate_profile.json
+          if-no-files-found: error
+
+      - name: Health evidence and rollback policy evaluation
+        env:
+          RB_MIN_COV: ${{ vars.UNCERTAINTY_ROLLBACK_MIN_COVERAGE }}
+          RB_MAX_MW: ${{ vars.UNCERTAINTY_ROLLBACK_MAX_MEAN_WIDTH }}
+          RB_MIN_N: ${{ vars.UNCERTAINTY_ROLLBACK_MIN_RECORD_COUNT }}
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          import json
+          from pathlib import Path
+
+          from coherence_engine.server.fund.services.uncertainty_governance import extract_calibration_metrics
+
+          prof = json.loads(
+              Path("artifacts/uncertainty_candidate_profile.json").read_text(encoding="utf-8")
+          )
+          m = extract_calibration_metrics(prof)
+          evidence = {
+              "metrics": {"coverage": m["coverage"], "mean_width": m["mean_width"]},
+              "n_records_used": int(m["record_count"]),
+          }
+          Path("artifacts/calibration_health_evidence.json").write_text(
+              json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          min_cov="${RB_MIN_COV:-0.80}"
+          max_mw="${RB_MAX_MW:-2.0}"
+          min_n="${RB_MIN_N:-1}"
+          python -m coherence_engine uncertainty-profile rollback-policy-eval \
+            --metrics-json artifacts/calibration_health_evidence.json \
+            --min-coverage "$min_cov" \
+            --max-mean-width "$max_mw" \
+            --min-record-count "$min_n" \
+            | tee artifacts/rollback_policy_decision.json
+          python <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          d = json.loads(Path("artifacts/rollback_policy_decision.json").read_text(encoding="utf-8"))
+          min_c = os.environ.get("RB_MIN_COV") or "0.80 (default)"
+          max_w = os.environ.get("RB_MAX_MW") or "2.0 (default)"
+          min_rn = os.environ.get("RB_MIN_N") or "1 (default)"
+          lines = [
+              "## Rollback policy check (candidate health evidence)",
+              "",
+              f"- **should_rollback**: `{d['should_rollback']}`",
+              f"- **reasons**: `{d['reasons']!r}`",
+              "",
+              f"Thresholds: min_coverage={min_c!r}, max_mean_width={max_w!r}, min_record_count={min_rn!r}",
+              "",
+              "Override via repository variables UNCERTAINTY_ROLLBACK_MIN_COVERAGE, "
+              "UNCERTAINTY_ROLLBACK_MAX_MEAN_WIDTH, UNCERTAINTY_ROLLBACK_MIN_RECORD_COUNT.",
+          ]
+          text = "\n".join(lines) + "\n"
+          Path("artifacts/rollback_policy_summary.md").write_text(text, encoding="utf-8")
+          gh = os.environ.get("GITHUB_STEP_SUMMARY")
+          if gh:
+              with open(gh, "a", encoding="utf-8") as fh:
+                  fh.write(text)
+          PY
+
+      - name: Upload rollback policy evaluation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: uncertainty-rollback-policy-eval
+          path: |
+            artifacts/calibration_health_evidence.json
+            artifacts/rollback_policy_decision.json
+            artifacts/rollback_policy_summary.md
+          if-no-files-found: error
+
+      - name: Promotion target sanity (manual dispatch only)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          S: ${{ inputs.promote_to_shadow }}
+          C: ${{ inputs.promote_to_canary }}
+          P: ${{ inputs.promote_to_prod }}
+          BASE: ${{ inputs.prod_baseline_profile_repo_path }}
+          TEAM_ATTEST: ${{ inputs.policy_owning_team_attestation }}
+          ATTESTOR: ${{ inputs.policy_owner_attestor }}
+          CHANGE_ID: ${{ inputs.policy_baseline_approval_change_id }}
+          EXPECT_TEAM: ${{ vars.UNCERTAINTY_POLICY_OWNING_TEAM }}
+        run: |
+          set -euo pipefail
+          n=0
+          [ "${S}" = "true" ] && n=$((n+1))
+          [ "${C}" = "true" ] && n=$((n+1))
+          [ "${P}" = "true" ] && n=$((n+1))
+          if [ "${n}" -gt 1 ]; then
+            echo "::error::Choose at most one of promote_to_shadow, promote_to_canary, promote_to_prod"
+            exit 1
+          fi
+          if [ "${P}" = "true" ] && [ -z "${BASE}" ]; then
+            echo "::error::promote_to_prod requires prod_baseline_profile_repo_path"
+            exit 1
+          fi
+          trim() { printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'; }
+          TA=$(trim "${TEAM_ATTEST}")
+          AT=$(trim "${ATTESTOR}")
+          CI=$(trim "${CHANGE_ID}")
+          if [ "${C}" = "true" ] || [ "${P}" = "true" ]; then
+            if [ -z "${TA}" ]; then
+              echo "::error::promote_to_canary / promote_to_prod require policy_owning_team_attestation"
+              exit 1
+            fi
+            if [ -z "${AT}" ]; then
+              echo "::error::promote_to_canary / promote_to_prod require policy_owner_attestor"
+              exit 1
+            fi
+            if [ "${#CI}" -lt 2 ]; then
+              echo "::error::promote_to_canary / promote_to_prod require policy_baseline_approval_change_id (min 2 characters after trim)"
+              exit 1
+            fi
+            ET=$(trim "${EXPECT_TEAM:-}")
+            if [ -n "${ET}" ] && [ "${TA}" != "${ET}" ]; then
+              echo "::error::policy_owning_team_attestation must exactly match UNCERTAINTY_POLICY_OWNING_TEAM (after trim)"
+              exit 1
+            fi
+          fi
+
+      - name: Ownership attestation rotation policy (canary/prod)
+        if: github.event_name == 'workflow_dispatch' && (inputs.promote_to_canary == true || inputs.promote_to_prod == true)
+        env:
+          EFF: ${{ inputs.policy_ownership_attestation_effective_date }}
+          MAX_IN: ${{ inputs.ownership_attestation_max_age_days }}
+          REM_IN: ${{ inputs.ownership_attestation_reminder_days_before_max }}
+          MAX_VAR: ${{ vars.UNCERTAINTY_OWNERSHIP_ATTESTATION_MAX_AGE_DAYS }}
+          REM_VAR: ${{ vars.UNCERTAINTY_OWNERSHIP_ATTESTATION_REMINDER_DAYS_BEFORE_MAX }}
+          GOVERNANCE_ATTESTATION_WORKFLOW_FILE: uncertainty-recalibration.yml
+          ESCALATION_OUT: artifacts/governance_attestation_escalation.json
+          GOVERNANCE_PROMOTION_ENV: ${{ inputs.promote_to_canary == true && 'canary' || inputs.promote_to_prod == true && 'prod' || '' }}
+          GOVERNANCE_GITHUB_ENVIRONMENT: ${{ inputs.promote_to_canary == true && 'uncertainty-governance-canary' || inputs.promote_to_prod == true && 'uncertainty-governance-prod' || '' }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          python deploy/scripts/report_governance_attestation_age.py validate-ownership-attestation
+
+      - name: Route governance attestation escalation (optional)
+        if: always()
+        env:
+          GOVERNANCE_ATTESTATION_ESCALATION_IN: artifacts/governance_attestation_escalation.json
+          GOVERNANCE_PROMOTION_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.promote_to_canary == true && 'canary' || github.event_name == 'workflow_dispatch' && inputs.promote_to_prod == true && 'prod' || 'recalibration' }}
+          GOVERNANCE_GITHUB_ENVIRONMENT: ${{ github.event_name == 'workflow_dispatch' && inputs.promote_to_canary == true && 'uncertainty-governance-canary' || github.event_name == 'workflow_dispatch' && inputs.promote_to_prod == true && 'uncertainty-governance-prod' || 'uncertainty-governance-recalibration' }}
+          GOVERNANCE_ESCALATION_ROUTING_MAP_JSON: deploy/ops/governance-attestation-escalation-routing-map.example.json
+          GOVERNANCE_ESCALATION_SINK: file
+        run: python deploy/scripts/route_governance_attestation_escalation.py
+
+      - name: Upload governance attestation escalation record
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-attestation-escalation
+          path: artifacts/governance_attestation_escalation.json
+          if-no-files-found: ignore
+
+      - name: Optional governance policy SHA pin (promotion only)
+        if: github.event_name == 'workflow_dispatch' && (inputs.promote_to_shadow == true || inputs.promote_to_canary == true || inputs.promote_to_prod == true)
+        env:
+          PIN: ${{ vars.UNCERTAINTY_GOVERNANCE_POLICY_SHA256 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PIN:-}" ]; then
+            echo "No UNCERTAINTY_GOVERNANCE_POLICY_SHA256 var set; skipping pin."
+            exit 0
+          fi
+          got=$(sha256sum data/governed/uncertainty_governance_policy.json | awk '{print $1}')
+          if [ "${got}" != "${PIN}" ]; then
+            echo "::error::Governance policy SHA256 mismatch (got ${got}, expected ${PIN})"
+            exit 1
+          fi
+          echo "Policy SHA256 pin OK."
+
+      - name: Governance gate (required before promotion)
+        if: github.event_name == 'workflow_dispatch' && (inputs.promote_to_shadow == true || inputs.promote_to_canary == true || inputs.promote_to_prod == true)
+        env:
+          ACK: ${{ inputs.governance_acknowledged }}
+          TOKEN_INPUT: ${{ inputs.promotion_approval_token }}
+          SEC_SHADOW: ${{ secrets.UNCERTAINTY_SHADOW_PROMOTION_TOKEN }}
+          SEC_CANARY: ${{ secrets.UNCERTAINTY_CANARY_PROMOTION_TOKEN }}
+          SEC_PROD: ${{ secrets.UNCERTAINTY_PROD_PROMOTION_TOKEN }}
+          S: ${{ inputs.promote_to_shadow }}
+          C: ${{ inputs.promote_to_canary }}
+          P: ${{ inputs.promote_to_prod }}
+        run: |
+          set -euo pipefail
+          if [ "${ACK}" != "true" ]; then
+            echo "::error::Promotion requires governance_acknowledged=true"
+            exit 1
+          fi
+          if [ "${S}" = "true" ]; then
+            SEC="${SEC_SHADOW}"; NAME="UNCERTAINTY_SHADOW_PROMOTION_TOKEN"
+          elif [ "${C}" = "true" ]; then
+            SEC="${SEC_CANARY}"; NAME="UNCERTAINTY_CANARY_PROMOTION_TOKEN"
+          elif [ "${P}" = "true" ]; then
+            SEC="${SEC_PROD}"; NAME="UNCERTAINTY_PROD_PROMOTION_TOKEN"
+          else
+            echo "::error::internal: no promotion target"
+            exit 1
+          fi
+          if [ -z "${SEC}" ]; then
+            echo "::error::Repository secret ${NAME} must be set for this promotion"
+            exit 1
+          fi
+          if [ -z "${TOKEN_INPUT}" ] || [ "${TOKEN_INPUT}" != "${SEC}" ]; then
+            echo "::error::promotion_approval_token does not match ${NAME}"
+            exit 1
+          fi
+          echo "Governance gate passed."
+
+      - name: Initialize governance audit log for promotion
+        if: github.event_name == 'workflow_dispatch' && (inputs.promote_to_shadow == true || inputs.promote_to_canary == true || inputs.promote_to_prod == true)
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          : > artifacts/uncertainty_governance_audit.jsonl
+
+      - name: Promote candidate to shadow (manual)
+        if: github.event_name == 'workflow_dispatch' && inputs.promote_to_shadow == true
+        env:
+          COHERENCE_UNCERTAINTY_GOVERNANCE_HMAC_KEY: ${{ secrets.UNCERTAINTY_GOVERNANCE_HMAC_KEY }}
+        run: |
+          mkdir -p artifacts
+          python -m coherence_engine uncertainty-profile promote \
+            --registry artifacts/uncertainty_profile_registry.json \
+            --stage shadow \
+            --profile artifacts/uncertainty_candidate_profile.json \
+            --governance-policy data/governed/uncertainty_governance_policy.json \
+            --governance-audit-log artifacts/uncertainty_governance_audit.jsonl \
+            --reason "workflow_dispatch promote_to_shadow"
+
+      - name: Promote candidate to canary (manual)
+        if: github.event_name == 'workflow_dispatch' && inputs.promote_to_canary == true
+        env:
+          COHERENCE_UNCERTAINTY_GOVERNANCE_HMAC_KEY: ${{ secrets.UNCERTAINTY_GOVERNANCE_HMAC_KEY }}
+        run: |
+          mkdir -p artifacts
+          python -m coherence_engine uncertainty-profile promote \
+            --registry artifacts/uncertainty_profile_registry.json \
+            --stage canary \
+            --profile artifacts/uncertainty_candidate_profile.json \
+            --governance-policy data/governed/uncertainty_governance_policy.json \
+            --governance-audit-log artifacts/uncertainty_governance_audit.jsonl \
+            --reason "workflow_dispatch promote_to_canary"
+
+      - name: Promote candidate to prod (manual)
+        if: github.event_name == 'workflow_dispatch' && inputs.promote_to_prod == true
+        env:
+          COHERENCE_UNCERTAINTY_GOVERNANCE_HMAC_KEY: ${{ secrets.UNCERTAINTY_GOVERNANCE_HMAC_KEY }}
+          BASE: ${{ inputs.prod_baseline_profile_repo_path }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          if [ ! -f "${BASE}" ]; then
+            echo "::error::baseline file missing: ${BASE}"
+            exit 1
+          fi
+          python -m coherence_engine uncertainty-profile promote \
+            --registry artifacts/uncertainty_profile_registry.json \
+            --stage prod \
+            --profile artifacts/uncertainty_candidate_profile.json \
+            --baseline-profile "${BASE}" \
+            --governance-policy data/governed/uncertainty_governance_policy.json \
+            --governance-audit-log artifacts/uncertainty_governance_audit.jsonl \
+            --reason "workflow_dispatch promote_to_prod"
+
+      - name: Write promotion continuity manifest
+        if: github.event_name == 'workflow_dispatch' && (inputs.promote_to_shadow == true || inputs.promote_to_canary == true || inputs.promote_to_prod == true)
+        env:
+          S: ${{ inputs.promote_to_shadow }}
+          C: ${{ inputs.promote_to_canary }}
+          P: ${{ inputs.promote_to_prod }}
+          TEAM_ATTEST: ${{ inputs.policy_owning_team_attestation }}
+          ATTESTOR: ${{ inputs.policy_owner_attestor }}
+          CHANGE_ID: ${{ inputs.policy_baseline_approval_change_id }}
+          EFF: ${{ inputs.policy_ownership_attestation_effective_date }}
+          MAX_IN: ${{ inputs.ownership_attestation_max_age_days }}
+          REM_IN: ${{ inputs.ownership_attestation_reminder_days_before_max }}
+          MAX_VAR: ${{ vars.UNCERTAINTY_OWNERSHIP_ATTESTATION_MAX_AGE_DAYS }}
+          REM_VAR: ${{ vars.UNCERTAINTY_OWNERSHIP_ATTESTATION_REMINDER_DAYS_BEFORE_MAX }}
+        run: |
+          set -euo pipefail
+          if [ "${S}" = "true" ]; then STAGE=shadow
+          elif [ "${C}" = "true" ]; then STAGE=canary
+          else STAGE=prod; fi
+          export STAGE
+          if [ "${STAGE}" = "canary" ]; then GH_ENV_NAME="uncertainty-governance-canary"
+          elif [ "${STAGE}" = "prod" ]; then GH_ENV_NAME="uncertainty-governance-prod"
+          else GH_ENV_NAME="uncertainty-governance-recalibration"; fi
+          export GH_ENV_NAME
+          export TEAM_ATTEST ATTESTOR CHANGE_ID
+          python <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          policy = Path("data/governed/uncertainty_governance_policy.json")
+          ph = hashlib.sha256(policy.read_bytes()).hexdigest()
+          stage = os.environ["STAGE"]
+          man = {
+              "promotion_stage": stage,
+              "github_environment": os.environ["GH_ENV_NAME"],
+              "source_recalibration_run_id": os.environ.get("GITHUB_RUN_ID", ""),
+              "governance_policy_sha256": ph,
+              "governance_policy_path": str(policy),
+              "registry_path": "artifacts/uncertainty_profile_registry.json",
+              "audit_log_path": "artifacts/uncertainty_governance_audit.jsonl",
+          }
+          if stage in ("canary", "prod"):
+              from datetime import date, datetime, timezone
+
+              def _pi(raw: str | None, default: int) -> int:
+                  s = (raw or "").strip()
+                  if not s:
+                      return default
+                  return int(s)
+
+              eff_raw = (os.environ.get("EFF") or "").strip()
+              max_age = _pi(os.environ.get("MAX_IN"), _pi(os.environ.get("MAX_VAR"), 90))
+              rem = _pi(os.environ.get("REM_IN"), _pi(os.environ.get("REM_VAR"), 14))
+              eff = date.fromisoformat(eff_raw[:10])
+              today = datetime.now(timezone.utc).date()
+              age = (today - eff).days
+              warn_from = max(0, max_age - rem)
+              man["policy_ownership_attestation"] = {
+                  "owning_team": (os.environ.get("TEAM_ATTEST") or "").strip(),
+                  "attestor_identity": (os.environ.get("ATTESTOR") or "").strip(),
+                  "approval_change_id": (os.environ.get("CHANGE_ID") or "").strip(),
+                  "attestation_effective_date": eff_raw,
+                  "age_days_at_promotion": age,
+                  "max_age_days_policy": max_age,
+                  "reminder_days_before_max": rem,
+                  "reminder_window_start_age_days": warn_from,
+                  "stale_for_max_age_policy": age > max_age,
+                  "within_staleness_reminder_window": (age <= max_age) and age >= warn_from,
+              }
+          Path("artifacts/promotion_continuity_manifest.json").write_text(
+              json.dumps(man, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload registry artifact (promote only)
+        if: github.event_name == 'workflow_dispatch' && (inputs.promote_to_shadow == true || inputs.promote_to_canary == true || inputs.promote_to_prod == true)
+        uses: actions/upload-artifact@v4
+        with:
+          name: uncertainty-profile-registry
+          path: artifacts/uncertainty_profile_registry.json
+          if-no-files-found: error
+
+      - name: Upload governance audit log (promote only)
+        if: github.event_name == 'workflow_dispatch' && (inputs.promote_to_shadow == true || inputs.promote_to_canary == true || inputs.promote_to_prod == true)
+        uses: actions/upload-artifact@v4
+        with:
+          name: uncertainty-governance-audit-log
+          path: artifacts/uncertainty_governance_audit.jsonl
+          if-no-files-found: error
+
+      - name: Upload promotion continuity manifest (promote only)
+        if: github.event_name == 'workflow_dispatch' && (inputs.promote_to_shadow == true || inputs.promote_to_canary == true || inputs.promote_to_prod == true)
+        uses: actions/upload-artifact@v4
+        with:
+          name: uncertainty-promotion-continuity-manifest
+          path: artifacts/promotion_continuity_manifest.json
+          if-no-files-found: error

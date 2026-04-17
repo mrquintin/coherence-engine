@@ -1,0 +1,257 @@
+# Centralized attestation trend reporting for cross-repo aggregation.
+#
+# Job environment (configure secrets/vars on it: Repository → Settings → Environments):
+#   - Name: repository variable GOVERNANCE_ATTESTATION_TREND_ENVIRONMENT if set, else
+#     default slug `governance-attestation-trends`.
+#   - workflow_dispatch input `governance_environment` overrides the slug when non-empty.
+#
+# Scheduled runs (governed, no example baselines / no ad-hoc SLA defaults):
+#   - Secret UNCERTAINTY_GOVERNANCE_POLICY_BASELINES_JSON — full baselines JSON (same schema as
+#     deploy/ops/uncertainty-governance-policy-baselines.example.json).
+#   - SLA: secret GOVERNANCE_ATTESTATION_SLA_POLICY (JSON body) and/or variable
+#     GOVERNANCE_ATTESTATION_SLA_POLICY_PATH (committed repo-relative path). At least one must
+#     resolve to a readable policy file for schedule.
+#   - Optional: vars UNCERTAINTY_OWNERSHIP_ATTESTATION_MAX_AGE_DAYS and
+#     UNCERTAINTY_OWNERSHIP_ATTESTATION_REMINDER_DAYS_BEFORE_MAX for the current-repo report.
+#
+# workflow_dispatch (safe testing): if baselines secret is missing, uses committed example JSON
+# with a notice. If no SLA source resolves, aggregation runs without --sla-policy.
+#
+# Cross-repo collection (outbound GitHub API): never implicit. Opt in via either
+#   - workflow_dispatch: enable_cross_repo_collection=true, or
+#   - schedule: environment variable GOVERNANCE_ATTESTATION_TREND_CROSS_REPO_ENABLED == `true`
+#     (string). Both paths require secrets on the job environment:
+#   - GOVERNANCE_ATTESTATION_TREND_GH_TOKEN — PAT or fine-grained token with actions:read
+#     and contents:read on listed repositories (and workflow scope to download artifacts).
+#   - GOVERNANCE_ATTESTATION_TREND_REPO_LIST — newline-separated owner/repo entries.
+#
+# Optional org enrollment coverage (after aggregate):
+#   - Secret GOVERNANCE_ENROLLMENT_EXPECTED_REPO_LIST — newline-separated owner/repo expected
+#     to appear in the trend aggregate inputs / latest_snapshot_by_repository.
+#   - Secret GOVERNANCE_ENROLLMENT_SLA_EXCEPTION_MANIFEST_JSON — JSON with
+#     allowed_missing_repositories (see deploy/ops/governance-enrollment-sla-exception-manifest.example.json).
+#   - Variable GOVERNANCE_ENROLLMENT_FAIL_ON_MISSING — set to `true` to fail the job (exit 2)
+#     when the expected list is configured but coverage is non-compliant (default: warn only).
+#
+# workflow_dispatch-only override: sla_policy_repo_path — repo-relative path (highest precedence
+# over environment SLA secret/var). When set, the aggregate step writes
+# governance-attestation-sla-evaluation.json and .md next to the trend aggregate.
+#
+# Requires GitHub CLI (preinstalled on ubuntu-latest) for the cross-repo path only.
+
+name: Governance attestation trend aggregation
+
+on:
+  schedule:
+    - cron: "15 7 * * 3"
+  workflow_dispatch:
+    inputs:
+      governance_environment:
+        description: "Optional GitHub Environment slug for this run (non-empty overrides GOVERNANCE_ATTESTATION_TREND_ENVIRONMENT var and default)."
+        type: string
+        default: ""
+      enable_cross_repo_collection:
+        description: "Fetch latest governance-attestation-aging-report artifacts from repos in GOVERNANCE_ATTESTATION_TREND_REPO_LIST (network + GH API)."
+        type: boolean
+        default: false
+      sla_policy_repo_path:
+        description: "Optional repo-relative path to SLA policy JSON (overrides GOVERNANCE_ATTESTATION_SLA_POLICY secret and GOVERNANCE_ATTESTATION_SLA_POLICY_PATH var when non-empty)."
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  aggregate-trends:
+    name: Aggregate governance attestation trends
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.governance_environment != '' && github.event.inputs.governance_environment || vars.GOVERNANCE_ATTESTATION_TREND_ENVIRONMENT || 'governance-attestation-trends' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Prepare directories
+        run: mkdir -p artifacts/trend-input artifacts/governance-trends
+
+      - name: Resolve baselines for current-repo report
+        id: trend_baselines
+        env:
+          BASELINES_JSON: ${{ secrets.UNCERTAINTY_GOVERNANCE_POLICY_BASELINES_JSON }}
+          BASELINES_FILE: ${{ runner.temp }}/uncertainty-governance-policy-baselines.private.json
+          GOV_ENV_SLUG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.governance_environment != '' && github.event.inputs.governance_environment || vars.GOVERNANCE_ATTESTATION_TREND_ENVIRONMENT || 'governance-attestation-trends' }}
+        run: |
+          set -euo pipefail
+          event="${GITHUB_EVENT_NAME}"
+          if [ "${event}" = "schedule" ]; then
+            if [ -z "${BASELINES_JSON:-}" ]; then
+              echo "::error::Scheduled trend aggregation requires secret UNCERTAINTY_GOVERNANCE_POLICY_BASELINES_JSON on GitHub Environment: ${GOV_ENV_SLUG}"
+              exit 1
+            fi
+            printf '%s' "${BASELINES_JSON}" > "${BASELINES_FILE}"
+            python -c "import json, os, sys; from pathlib import Path; p=Path(os.environ['BASELINES_FILE']); r=p.read_text(encoding='utf-8').strip(); (not r and (print('::error::UNCERTAINTY_GOVERNANCE_POLICY_BASELINES_JSON is empty on the environment.', file=sys.stderr) or True) and sys.exit(1)); json.loads(r)"
+            echo "path=${BASELINES_FILE}" >> "${GITHUB_OUTPUT}"
+            echo "source=environment_secret" >> "${GITHUB_OUTPUT}"
+          else
+            if [ -n "${BASELINES_JSON:-}" ]; then
+              printf '%s' "${BASELINES_JSON}" > "${BASELINES_FILE}"
+              python -c "import json, os, sys; from pathlib import Path; p=Path(os.environ['BASELINES_FILE']); r=p.read_text(encoding='utf-8').strip(); (not r and (print('::error::UNCERTAINTY_GOVERNANCE_POLICY_BASELINES_JSON is empty.', file=sys.stderr) or True) and sys.exit(1)); json.loads(r)"
+              echo "path=${BASELINES_FILE}" >> "${GITHUB_OUTPUT}"
+              echo "source=environment_secret" >> "${GITHUB_OUTPUT}"
+            else
+              echo "::notice::No UNCERTAINTY_GOVERNANCE_POLICY_BASELINES_JSON on environment; using committed example baselines (workflow_dispatch testing mode only)."
+              echo "path=deploy/ops/uncertainty-governance-policy-baselines.example.json" >> "${GITHUB_OUTPUT}"
+              echo "source=example" >> "${GITHUB_OUTPUT}"
+            fi
+          fi
+
+      - name: Validate scheduled SLA inputs
+        if: ${{ github.event_name == 'schedule' }}
+        env:
+          SLA_POLICY_SECRET_BODY: ${{ secrets.GOVERNANCE_ATTESTATION_SLA_POLICY }}
+          SLA_POLICY_VAR_PATH: ${{ vars.GOVERNANCE_ATTESTATION_SLA_POLICY_PATH }}
+        run: |
+          set -euo pipefail
+          has_secret=0
+          has_path=0
+          if [ -n "${SLA_POLICY_SECRET_BODY:-}" ]; then
+            has_secret=1
+          fi
+          if [ -n "${SLA_POLICY_VAR_PATH:-}" ] && [ -f "${SLA_POLICY_VAR_PATH}" ]; then
+            has_path=1
+          fi
+          if [ "${has_secret}" -eq 0 ] && [ "${has_path}" -eq 0 ]; then
+            echo "::error::Scheduled runs require SLA policy: set secret GOVERNANCE_ATTESTATION_SLA_POLICY and/or variable GOVERNANCE_ATTESTATION_SLA_POLICY_PATH (existing file in repo) on the workflow environment."
+            exit 1
+          fi
+
+      - name: Generate current-repo report (no network)
+        env:
+          BASELINES_PATH: ${{ steps.trend_baselines.outputs.path }}
+          MAX_AGE_VAR: ${{ vars.UNCERTAINTY_OWNERSHIP_ATTESTATION_MAX_AGE_DAYS }}
+          REM_VAR: ${{ vars.UNCERTAINTY_OWNERSHIP_ATTESTATION_REMINDER_DAYS_BEFORE_MAX }}
+        run: |
+          set -euo pipefail
+          max_age="${MAX_AGE_VAR:-90}"
+          rem="${REM_VAR:-14}"
+          python deploy/scripts/report_governance_attestation_age.py report \
+            --baselines "${BASELINES_PATH}" \
+            --max-age-days "${max_age}" \
+            --reminder-days-before-max "${rem}" \
+            --source-repository "${{ github.repository }}" \
+            --json-out artifacts/trend-input/current-repo-governance-attestation-aging-report.json
+
+      - name: Collect remote attestation reports (opt-in, GH API)
+        if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.enable_cross_repo_collection == 'true') || (github.event_name == 'schedule' && vars.GOVERNANCE_ATTESTATION_TREND_CROSS_REPO_ENABLED == 'true') }}
+        env:
+          GH_TOKEN: ${{ secrets.GOVERNANCE_ATTESTATION_TREND_GH_TOKEN }}
+          REPO_LIST: ${{ secrets.GOVERNANCE_ATTESTATION_TREND_REPO_LIST }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::Cross-repo collection enabled but GOVERNANCE_ATTESTATION_TREND_GH_TOKEN is not set on the workflow environment."
+            exit 1
+          fi
+          export GH_TOKEN
+          if [ -z "${REPO_LIST:-}" ] || [ -z "${REPO_LIST//[$' \t\r\n']/}" ]; then
+            echo "::warning::GOVERNANCE_ATTESTATION_TREND_REPO_LIST is empty; no remote reports fetched."
+            exit 0
+          fi
+          while IFS= read -r line || [ -n "${line}" ]; do
+            repo="${line//[$' \t\r\n']/}"
+            [ -z "${repo}" ] && continue
+            echo "::notice::Fetching latest attestation lifecycle artifact for ${repo}"
+            rid="$(gh run list -R "${repo}" --workflow uncertainty-attestation-lifecycle.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null || true)"
+            if [ -z "${rid}" ] || [ "${rid}" = "null" ]; then
+              echo "::warning::No successful uncertainty-attestation-lifecycle run found for ${repo}"
+              continue
+            fi
+            dest="artifacts/trend-input/remote/${repo//\//__}"
+            mkdir -p "${dest}"
+            gh run download "${rid}" -R "${repo}" -n governance-attestation-aging-report -D "${dest}"
+          done <<< "${REPO_LIST}"
+
+      - name: Aggregate reports
+        env:
+          SLA_POLICY_SECRET_BODY: ${{ secrets.GOVERNANCE_ATTESTATION_SLA_POLICY }}
+          SLA_POLICY_VAR_PATH: ${{ vars.GOVERNANCE_ATTESTATION_SLA_POLICY_PATH }}
+          SLA_POLICY_DISPATCH_PATH: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.sla_policy_repo_path || '' }}
+        run: |
+          set -euo pipefail
+          SLA_FILE=""
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ -n "${SLA_POLICY_DISPATCH_PATH:-}" ]; then
+            SLA_FILE="${SLA_POLICY_DISPATCH_PATH}"
+          fi
+          if [ -z "${SLA_FILE}" ] && [ -n "${SLA_POLICY_SECRET_BODY:-}" ]; then
+            printf '%s\n' "${SLA_POLICY_SECRET_BODY}" > artifacts/governance-trends/sla-policy-from-secret.json
+            SLA_FILE="artifacts/governance-trends/sla-policy-from-secret.json"
+          fi
+          if [ -z "${SLA_FILE}" ] && [ -n "${SLA_POLICY_VAR_PATH:-}" ] && [ -f "${SLA_POLICY_VAR_PATH}" ]; then
+            SLA_FILE="${SLA_POLICY_VAR_PATH}"
+          fi
+          CMD=(
+            python deploy/scripts/aggregate_governance_attestation_reports.py
+            --input-glob "artifacts/trend-input/**/*.json"
+            --json-out artifacts/governance-trends/governance-attestation-trend-aggregate.json
+            --markdown-out artifacts/governance-trends/governance_attestation_trend_dashboard.md
+          )
+          if [ -n "${SLA_FILE}" ]; then
+            if [ ! -f "${SLA_FILE}" ]; then
+              echo "::error::SLA policy path resolved but file not found: ${SLA_FILE}"
+              exit 1
+            fi
+            CMD+=(--sla-policy "${SLA_FILE}")
+          elif [ "${GITHUB_EVENT_NAME}" = "schedule" ]; then
+            echo "::error::Scheduled aggregation could not resolve SLA policy file (secret empty or path missing)."
+            exit 1
+          fi
+          "${CMD[@]}"
+
+      - name: Enrollment coverage vs expected org repos (optional)
+        if: ${{ success() }}
+        env:
+          EXPECTED_SECRET: ${{ secrets.GOVERNANCE_ENROLLMENT_EXPECTED_REPO_LIST }}
+          MANIFEST_SECRET: ${{ secrets.GOVERNANCE_ENROLLMENT_SLA_EXCEPTION_MANIFEST_JSON }}
+          FAIL_ON_MISSING: ${{ vars.GOVERNANCE_ENROLLMENT_FAIL_ON_MISSING }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/governance-trends
+          CMD=(
+            python deploy/scripts/report_governance_enrollment_coverage.py
+            --aggregate-json artifacts/governance-trends/governance-attestation-trend-aggregate.json
+            --json-out artifacts/governance-trends/governance-enrollment-coverage.json
+            --markdown-out artifacts/governance-trends/governance_enrollment_coverage.md
+          )
+          if [ -n "${EXPECTED_SECRET:-}" ]; then
+            printf '%s' "${EXPECTED_SECRET}" > "${RUNNER_TEMP}/governance-expected-repos.txt"
+            CMD+=(--expected-repos-file "${RUNNER_TEMP}/governance-expected-repos.txt")
+          fi
+          if [ -n "${MANIFEST_SECRET:-}" ]; then
+            printf '%s' "${MANIFEST_SECRET}" > artifacts/governance-trends/enrollment-sla-exception-manifest.json
+            CMD+=(--exception-manifest artifacts/governance-trends/enrollment-sla-exception-manifest.json)
+          fi
+          if [ "${FAIL_ON_MISSING:-}" = "true" ]; then
+            CMD+=(--fail-on-missing)
+          fi
+          "${CMD[@]}"
+
+      - name: Upload trend artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-attestation-trend-aggregate
+          path: |
+            artifacts/governance-trends/governance-attestation-trend-aggregate.json
+            artifacts/governance-trends/governance_attestation_trend_dashboard.md
+            artifacts/governance-trends/governance-attestation-sla-evaluation.json
+            artifacts/governance-trends/governance-attestation-sla-evaluation.md
+            artifacts/governance-trends/governance-enrollment-coverage.json
+            artifacts/governance-trends/governance_enrollment_coverage.md
+            artifacts/governance-trends/enrollment-sla-exception-manifest.json
+          if-no-files-found: warn

@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "ci": {
+    "pinning": {
+      "governance_policy_path": "data/governed/uncertainty_governance_policy.json",
+      "github_repository_variable_sha256": "UNCERTAINTY_GOVERNANCE_POLICY_SHA256",
+      "approval_secrets_by_stage": {
+        "shadow": "UNCERTAINTY_SHADOW_PROMOTION_TOKEN",
+        "canary": "UNCERTAINTY_CANARY_PROMOTION_TOKEN",
+        "prod": "UNCERTAINTY_PROD_PROMOTION_TOKEN"
+      },
+      "optional_audit_hmac_secret": "UNCERTAINTY_GOVERNANCE_HMAC_KEY",
+      "note": "Set UNCERTAINTY_GOVERNANCE_POLICY_SHA256 to the sha256 of this file (hex) to pin in CI when non-empty. Runtime Python loader ignores the ci key."
+    },
+    "governance_baseline_verification": {
+      "example_baseline_path": "deploy/ops/uncertainty-governance-policy-baselines.example.json",
+      "verifier_script_path": "deploy/scripts/verify_uncertainty_policy_baselines.py",
+      "scheduled_workflow": ".github/workflows/uncertainty-policy-governance-verification.yml",
+      "note": "Per-environment SHA256 baselines and ownership metadata live in the example registry; copy to a private path for production pins. The loader ignores ci.governance_baseline_verification."
+    }
+  },
+  "stages": {
+    "shadow": {
+      "promotion_gates": {
+        "min_coverage": 0.85,
+        "max_mean_width": 0.45,
+        "min_record_count": 5
+      },
+      "rollback_triggers": {
+        "min_coverage": 0.75,
+        "max_mean_width": 0.55,
+        "min_record_count": 3
+      }
+    },
+    "canary": {
+      "promotion_gates": {
+        "min_coverage": 0.9,
+        "max_mean_width": 0.35,
+        "min_record_count": 20
+      },
+      "rollback_triggers": {
+        "min_coverage": 0.82,
+        "max_mean_width": 0.42,
+        "min_record_count": 15
+      }
+    },
+    "prod": {
+      "promotion_gates": {
+        "min_coverage": 0.93,
+        "max_mean_width": 0.28,
+        "min_record_count": 50,
+        "max_coverage_drop_vs_baseline": 0.02,
+        "max_mean_width_increase_vs_baseline": 0.02
+      },
+      "rollback_triggers": {
+        "min_coverage": 0.88,
+        "max_mean_width": 0.35,
+        "min_record_count": 30
+      }
+    }
+  }
+}

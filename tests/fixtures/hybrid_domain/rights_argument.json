@@ -1,0 +1,10 @@
+{
+  "schema_version": "hybrid-domain-fixture-v1",
+  "notes": "Rights-leaning argument about individual freedoms and consent; should weight individual_rights high.",
+  "propositions": [
+    {"id": "p1", "text": "Every person has rights to autonomy and freedom of thought.", "prop_type": "premise"},
+    {"id": "p2", "text": "Consent and dignity must be respected without coercive interference.", "prop_type": "premise"},
+    {"id": "p3", "text": "Privacy is a fundamental right that requires justification to override.", "prop_type": "premise"},
+    {"id": "p4", "text": "Therefore individuals are entitled to equal treatment regardless of identity.", "prop_type": "claim"}
+  ]
+}

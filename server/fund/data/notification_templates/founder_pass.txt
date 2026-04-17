@@ -1,0 +1,24 @@
+Subject: {company_name} — your application has advanced to partner review
+
+Hi {founder_name},
+
+Thank you for completing the intake interview for {company_name}.
+Our coherence-scored decision policy ({policy_version}) advanced
+your application (id: {application_id}) for partner review.
+
+Summary
+-------
+- Decision: pass
+- Coherence observed: {coherence_observed}
+- Coherence required: {threshold_required}
+- Margin: {margin}
+
+Next steps
+----------
+A partner from the fund will reach out within 5 business days to
+schedule the deep-dive conversation. No action is required from
+you in the meantime.
+
+If you have questions, reply to this email.
+
+— The Fund

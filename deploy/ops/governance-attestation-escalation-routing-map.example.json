@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "description": "Example routing map for governance attestation escalations. Canary and prod use dedicated file sinks (CI-safe default) and optional webhook env vars for live channels.",
+  "by_github_environment": {
+    "uncertainty-governance-canary": {
+      "escalation_channel": "governance_canary",
+      "file_path": "artifacts/governance_escalation_sink_canary.ndjson",
+      "webhook_environment_variable": "GOVERNANCE_ESCALATION_WEBHOOK_URL_CANARY"
+    },
+    "uncertainty-governance-prod": {
+      "escalation_channel": "governance_prod",
+      "file_path": "artifacts/governance_escalation_sink_prod.ndjson",
+      "webhook_environment_variable": "GOVERNANCE_ESCALATION_WEBHOOK_URL_PROD"
+    }
+  },
+  "by_promotion_environment": {
+    "canary": {
+      "escalation_channel": "governance_canary",
+      "file_path": "artifacts/governance_escalation_sink_canary.ndjson",
+      "webhook_environment_variable": "GOVERNANCE_ESCALATION_WEBHOOK_URL_CANARY"
+    },
+    "prod": {
+      "escalation_channel": "governance_prod",
+      "file_path": "artifacts/governance_escalation_sink_prod.ndjson",
+      "webhook_environment_variable": "GOVERNANCE_ESCALATION_WEBHOOK_URL_PROD"
+    }
+  }
+}
