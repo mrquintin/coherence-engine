@@ -214,9 +214,17 @@ MSG
     return 1
   fi
 
-  # Generate a tiny launcher module. This is required because the repo's own
-  # package (coherence_engine) resolves imports via ``pythonpath = [".."]`` in
-  # pyproject.toml, which PyInstaller's analyzer cannot follow by itself.
+  # Generate the launcher PyInstaller freezes. Dual-mode so one .app satisfies
+  # both user journeys:
+  #
+  #   - Finder double-click / ``open -a CoherenceEngine`` → argv has length 1,
+  #     launch the tkinter GUI (coherence_engine.gui.main). This is the
+  #     expected "normal user" path on macOS.
+  #   - Terminal invocation with extra args (e.g.
+  #     ``/Applications/CoherenceEngine.app/Contents/MacOS/CoherenceEngine
+  #     analyze foo.txt``) → route through the argparse CLI. Power users who
+  #     want the installed app to double as a CLI binary get that for free
+  #     without a separate ``pip install``.
   mkdir -p "$WORK_DIR/launcher"
   cat > "$WORK_DIR/launcher/coherence_engine_launcher.py" <<'PY'
 """PyInstaller entrypoint for CoherenceEngine."""
@@ -224,33 +232,54 @@ from __future__ import annotations
 import sys
 
 
-def _boot() -> None:
-    # Frozen path: coherence_engine is bundled via --collect-all.
+def _boot() -> object:
+    # Frozen path: ``coherence_engine`` is bundled by PyInstaller at the top
+    # of sys.path. The except branch only kicks in when the raw launcher file
+    # is executed directly against a checkout with the repo parent missing
+    # from PYTHONPATH — useful during interactive debugging of this script.
     try:
-        from coherence_engine.cli import main  # type: ignore
-    except ImportError:  # unfrozen / dev run fallback
+        from coherence_engine.cli import main as cli_main  # type: ignore
+        from coherence_engine.gui import main as gui_main  # type: ignore
+    except ImportError:
         import pathlib
         here = pathlib.Path(__file__).resolve().parent
-        sys.path.insert(0, str(here.parent.parent.parent))
-        from coherence_engine.cli import main  # type: ignore
-    raise SystemExit(main())
+        # launcher/ → .installer-work/ → build/ → <repo> → <repo parent>
+        sys.path.insert(0, str(here.parent.parent.parent.parent))
+        from coherence_engine.cli import main as cli_main  # type: ignore
+        from coherence_engine.gui import main as gui_main  # type: ignore
+
+    if len(sys.argv) > 1:
+        return cli_main()
+    return gui_main()
 
 
 if __name__ == "__main__":
-    _boot()
+    raise SystemExit(_boot())
 PY
 
   # The ``coherence_engine`` package sits at the repo root and is imported
-  # relative to the repo *parent* (see pyproject.toml's pythonpath). The cd
-  # below plus an explicit --paths tell PyInstaller where to resolve the
-  # package from; --paths is the load-bearing part because PyInstaller does
-  # not put CWD on sys.path implicitly, and --collect-all needs to actually
-  # import the package to walk its submodules and data files.
+  # relative to the repo *parent* (see pyproject.toml's pythonpath). Two
+  # separate mechanisms have to find it:
+  #
+  #   1. PyInstaller's *Analyzer* walks the launcher's imports to build the
+  #      dependency graph; it honors ``--paths``.
+  #   2. PyInstaller's *hook helpers* (``--collect-all``, ``--collect-submodules``,
+  #      ``--collect-data``) run at spec-generation time, BEFORE ``--paths``
+  #      is applied. They import via the build host's plain ``sys.path``, so
+  #      if ``coherence_engine`` isn't on PYTHONPATH they silently no-op with
+  #      "collect_data_files - skipping … as it is not a package" warnings.
+  #
+  # Setting PYTHONPATH here fixes (2), while ``--paths`` continues to cover (1).
+  # The ``--hidden-import`` for ``coherence_engine.gui`` is belt-and-suspenders:
+  # the launcher imports it explicitly, so the Analyzer should pick it up, but
+  # forcing it in guarantees the GUI module ships even if static analysis ever
+  # loses track of that import site.
   local repo_parent
   repo_parent="$(cd "$ROOT/.." && pwd)"
 
   (
     cd "$repo_parent"
+    PYTHONPATH="$repo_parent${PYTHONPATH:+:$PYTHONPATH}" \
     pyinstaller \
       --noconfirm \
       --clean \
@@ -258,6 +287,9 @@ PY
       --windowed \
       --paths "$repo_parent" \
       --collect-all coherence_engine \
+      --hidden-import coherence_engine \
+      --hidden-import coherence_engine.cli \
+      --hidden-import coherence_engine.gui \
       --distpath "$WORK_DIR/dist" \
       --workpath "$WORK_DIR/work" \
       --specpath "$WORK_DIR" \
