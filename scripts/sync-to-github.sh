@@ -553,6 +553,43 @@ STAGED_COUNT="$(find "$STAGE" -maxdepth 1 -type f | wc -l | tr -d ' ')"
 log "staged $STAGED_COUNT release artifact(s)"
 
 # ----------------------------------------------------------------------------
+# Release-asset size guard. GitHub's Release API rejects any individual asset
+# larger than 2 GiB (HTTP 422 "size must be less than 2147483648"). A bundle
+# that blows past this is nearly always the result of PyInstaller over-collection
+# (``--collect-all`` on a package whose dir doubles as the repo root sweeps
+# tests/artifacts/db/etc. as data). Detect that here rather than after burning
+# two+ minutes on a ``gh release create`` that can't succeed.
+# ----------------------------------------------------------------------------
+CURRENT_STEP="checking release asset sizes"
+GH_RELEASE_ASSET_MAX=2147483648  # 2 GiB — GitHub's hard per-asset cap.
+OVERSIZED_ASSETS=""
+OVERSIZED_ASSETS_COUNT=0
+while IFS= read -r -d '' asset; do
+  sz="$(wc -c < "$asset" 2>/dev/null | tr -d ' ')"
+  [ -n "$sz" ] || continue
+  if [ "$sz" -gt "$GH_RELEASE_ASSET_MAX" ]; then
+    OVERSIZED_ASSETS="${OVERSIZED_ASSETS}  $((sz / 1024 / 1024)) MB  $(basename "$asset")
+"
+    OVERSIZED_ASSETS_COUNT=$((OVERSIZED_ASSETS_COUNT + 1))
+  fi
+done < <(find "$STAGE" -maxdepth 1 -type f -print0)
+
+if [ "$OVERSIZED_ASSETS_COUNT" -gt 0 ]; then
+  {
+    printf "%sERROR: %d staged release asset(s) exceed GitHub's 2 GiB per-asset limit:%s\n" \
+      "$C_RED" "$OVERSIZED_ASSETS_COUNT" "$C_RESET"
+    printf "%s" "$OVERSIZED_ASSETS"
+    printf "\nThis is almost always PyInstaller over-collection. Common causes:\n"
+    printf "  - ``--collect-all <pkg>`` where <pkg>'s directory is the repo root,\n"
+    printf "    which sweeps tests/, migrations, artifacts/, DB files, etc. as data.\n"
+    printf "  - Accidentally bundling a large model file or dataset as package-data.\n"
+    printf "\nInspect build/.installer-work/work/*/warn-*.txt and xref-*.html for\n"
+    printf "what grew. Trim the build script and rerun.\n"
+  } >&2
+  exit 1
+fi
+
+# ----------------------------------------------------------------------------
 # (k, pre-push) Regenerate the README Download block so the committed README
 #     always reflects the new tag. Only touches content if both markers
 #     already exist — the one-time seeding is the README file we ship

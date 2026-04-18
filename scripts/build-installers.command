@@ -263,17 +263,41 @@ PY
   #
   #   1. PyInstaller's *Analyzer* walks the launcher's imports to build the
   #      dependency graph; it honors ``--paths``.
-  #   2. PyInstaller's *hook helpers* (``--collect-all``, ``--collect-submodules``,
-  #      ``--collect-data``) run at spec-generation time, BEFORE ``--paths``
-  #      is applied. They import via the build host's plain ``sys.path``, so
-  #      if ``coherence_engine`` isn't on PYTHONPATH they silently no-op with
-  #      "collect_data_files - skipping … as it is not a package" warnings.
+  #   2. PyInstaller's *hook helpers* (``--collect-data``, ``--collect-submodules``)
+  #      run at spec-generation time, BEFORE ``--paths`` is applied. They
+  #      import via the build host's plain ``sys.path``, so if ``coherence_engine``
+  #      isn't on PYTHONPATH they silently no-op with "collect_data_files -
+  #      skipping … as it is not a package" warnings.
   #
   # Setting PYTHONPATH here fixes (2), while ``--paths`` continues to cover (1).
-  # The ``--hidden-import`` for ``coherence_engine.gui`` is belt-and-suspenders:
-  # the launcher imports it explicitly, so the Analyzer should pick it up, but
-  # forcing it in guarantees the GUI module ships even if static analysis ever
-  # loses track of that import site.
+  #
+  # We deliberately do NOT use ``--collect-all coherence_engine`` even though
+  # we have a working package resolver now. Because this repo's package
+  # directory IS the repo root, ``--collect-all`` sweeps *everything* sitting
+  # alongside ``__init__.py`` — the entire ``tests/`` tree, ``alembic/``
+  # migrations, ``artifacts/`` output, ``docs/``, ``.pytest_cache/``, the
+  # top-level project-status .txt dumps, ``coherence_fund.db``, and every
+  # transitive submodule's .pyc — into the bundle as data. The previous run
+  # that used ``--collect-all`` produced an 8.25 GB .dmg / 7.58 GB .pkg that
+  # overshot GitHub's 2 GiB per-release-asset cap (HTTP 422 "size must be
+  # less than 2147483648"). Letting the Analyzer trace imports naturally from
+  # the launcher gives us a ~340 MB bundle that covers exactly the code path
+  # the GUI actually executes, and still bundles torch/scipy/sklearn etc.
+  # transitively via ``__init__.py``'s imports of ``core.scorer`` + friends.
+  #
+  # Hidden imports cover two cases the static Analyzer can miss:
+  #   - ``coherence_engine.gui`` is explicitly imported by the launcher, but
+  #     flagging it here guarantees it ships even if analysis ever drops that
+  #     edge.
+  #   - ``coherence_engine.core.delegation`` / ``coherence_engine.core.explanation``
+  #     are only imported lazily inside ``gui.py`` method bodies that PyInstaller
+  #     otherwise treats as runtime-only code.
+  #
+  # ``--collect-data coherence_engine.data`` ships the declared package-data
+  # JSONs (``negation_patterns.json``, ``societal_premises.json``) because the
+  # bare Analyzer only bundles .py files. That subpackage has an ``__init__.py``
+  # and a pyproject.toml ``[tool.setuptools.package-data]`` declaration, so this
+  # is the right scope.
   local repo_parent
   repo_parent="$(cd "$ROOT/.." && pwd)"
 
@@ -286,10 +310,10 @@ PY
       --name "${APP_NAME}" \
       --windowed \
       --paths "$repo_parent" \
-      --collect-all coherence_engine \
-      --hidden-import coherence_engine \
-      --hidden-import coherence_engine.cli \
+      --collect-data coherence_engine.data \
       --hidden-import coherence_engine.gui \
+      --hidden-import coherence_engine.core.delegation \
+      --hidden-import coherence_engine.core.explanation \
       --distpath "$WORK_DIR/dist" \
       --workpath "$WORK_DIR/work" \
       --specpath "$WORK_DIR" \
