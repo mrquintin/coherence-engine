@@ -8,8 +8,11 @@
       "group": "none",
       "presentation": {
         "reveal": "always",
-        "panel": "shared",
-        "focus": true
+        "panel": "dedicated",
+        "focus": true,
+        "clear": true,
+        "showReuseMessage": false,
+        "close": false
       },
       "problemMatcher": []
     }

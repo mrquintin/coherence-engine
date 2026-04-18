@@ -273,6 +273,57 @@ prompt_rebuild() {
   esac
 }
 
+# ----------------------------------------------------------------------------
+# Pre-push size guard. GitHub's pre-receive hook rejects any single file that
+# exceeds 100 MB, terminating the whole push (see error GH001). Scanning HEAD's
+# tree up front lets us fail in seconds with a clear message, instead of
+# discovering the limit after uploading a multi-hundred-MB pack. Applies equally
+# to stuck-from-a-prior-run commits (Case 2) and freshly-built commits (Case 3).
+# ----------------------------------------------------------------------------
+check_head_for_oversized_files() {
+  python3 - "$ROOT" <<'PY' || return 1
+import pathlib, subprocess, sys
+root = pathlib.Path(sys.argv[1])
+MAX = 100 * 1024 * 1024  # GitHub's per-file push limit.
+try:
+    out = subprocess.check_output(
+        ["git", "ls-tree", "-r", "-l", "HEAD"], cwd=root, text=True
+    )
+except subprocess.CalledProcessError:
+    # No HEAD yet (fresh repo). Nothing tracked → nothing to reject.
+    sys.exit(0)
+bad = []
+for line in out.splitlines():
+    # Format: "<mode> SP <type> SP <hash> SP <size>\t<path>"
+    meta, _, path = line.partition("\t")
+    parts = meta.split()
+    if len(parts) < 4 or not path:
+        continue
+    try:
+        size = int(parts[3])
+    except ValueError:
+        continue
+    if size > MAX:
+        bad.append((size, path))
+if not bad:
+    sys.exit(0)
+bad.sort(reverse=True)
+red   = "\033[1;31m" if sys.stderr.isatty() else ""
+reset = "\033[0m"    if sys.stderr.isatty() else ""
+print(f"\n{red}ERROR: {len(bad)} file(s) tracked in HEAD exceed GitHub's "
+      f"100 MB per-file push limit:{reset}", file=sys.stderr)
+for size, path in bad:
+    print(f"  {size // 1024 // 1024:>4} MB  {path}", file=sys.stderr)
+print("\nThese are almost certainly build artifacts. To unblock the push:", file=sys.stderr)
+print("  1. Ensure the path(s) are covered by .gitignore", file=sys.stderr)
+print("  2. 'git rm --cached <path>' to untrack them", file=sys.stderr)
+print("  3. 'git commit --amend --no-edit' to rewrite the offending commit", file=sys.stderr)
+print("  4. Rerun sync. Large binaries ship via GitHub Releases, not in commits.",
+      file=sys.stderr)
+sys.exit(1)
+PY
+}
+
 UNPUSHED_COUNT="$(count_unpushed_commits)"
 
 if ! has_source_changes; then
@@ -280,6 +331,8 @@ if ! has_source_changes; then
     # Case 2: clean tree, but local branch is ahead. Push existing commits
     # without building new installers or cutting a new release tag.
     log "clean tree with $UNPUSHED_COUNT unpushed commit(s) on $CURRENT_BRANCH — pushing without rebuild"
+    CURRENT_STEP="checking HEAD for oversized files"
+    check_head_for_oversized_files || exit 1
     CURRENT_STEP="pushing existing commits"
     if git rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>&1; then
       git push origin "$CURRENT_BRANCH"
@@ -554,6 +607,9 @@ if git diff --cached --quiet; then
   UNPUSHED_COUNT="$(count_unpushed_commits)"
   if [ "$UNPUSHED_COUNT" -gt 0 ]; then
     log "nothing new to commit but $UNPUSHED_COUNT unpushed commit(s) — pushing"
+    CURRENT_STEP="checking HEAD for oversized files"
+    check_head_for_oversized_files || exit 1
+    CURRENT_STEP="committing and pushing"
     if git rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>&1; then
       git push origin "$CURRENT_BRANCH"
     else
@@ -570,6 +626,9 @@ if git diff --cached --quiet; then
   fi
 else
   git commit -m "v${NEW_VERSION}: Sync and build"
+  CURRENT_STEP="checking HEAD for oversized files"
+  check_head_for_oversized_files || exit 1
+  CURRENT_STEP="committing and pushing"
   if git rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>&1; then
     git push origin "$CURRENT_BRANCH"
   else

@@ -5,7 +5,7 @@
 - macOS (dmg): https://github.com/mrquintin/coherence-engine/releases/latest/download/CoherenceEngine-Installer.dmg
 - Uninstall:   https://github.com/mrquintin/coherence-engine/releases/latest/download/Uninstall-CoherenceEngine.command
 
-Latest version: v0.1.2 — https://github.com/mrquintin/coherence-engine/releases/tag/v0.1.2
+Latest version: v0.1.3 — https://github.com/mrquintin/coherence-engine/releases/tag/v0.1.3
 <!-- INSTALLERS:END -->
 
 # Coherence Engine — WIP

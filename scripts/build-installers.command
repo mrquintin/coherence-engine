@@ -241,9 +241,11 @@ if __name__ == "__main__":
 PY
 
   # The ``coherence_engine`` package sits at the repo root and is imported
-  # relative to the repo *parent* (see pyproject.toml's pythonpath). Run
-  # PyInstaller from that parent so ``--collect-all coherence_engine``
-  # resolves it as a top-level package.
+  # relative to the repo *parent* (see pyproject.toml's pythonpath). The cd
+  # below plus an explicit --paths tell PyInstaller where to resolve the
+  # package from; --paths is the load-bearing part because PyInstaller does
+  # not put CWD on sys.path implicitly, and --collect-all needs to actually
+  # import the package to walk its submodules and data files.
   local repo_parent
   repo_parent="$(cd "$ROOT/.." && pwd)"
 
@@ -254,6 +256,7 @@ PY
       --clean \
       --name "${APP_NAME}" \
       --windowed \
+      --paths "$repo_parent" \
       --collect-all coherence_engine \
       --distpath "$WORK_DIR/dist" \
       --workpath "$WORK_DIR/work" \

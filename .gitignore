@@ -1,9 +1,13 @@
 # ---------------------------------------------------------------------------
-# Release staging (ignored on purpose).
-# build/installers/ is deliberately NOT ignored — those artifacts ship with the
-# repo so raw.githubusercontent.com fallback links and historical checkouts
-# can still install the app offline.
+# Build outputs. Installers and staging are produced by
+# scripts/build-installers.command and attached to GitHub Releases by
+# scripts/sync-to-github.sh. They are NEVER committed to the repo — a single
+# .pkg/.dmg can run into the hundreds of MB and trip GitHub's 100 MB per-file
+# push limit. Release URLs from raw.githubusercontent.com/.../releases/latest/
+# download/ serve them directly from Releases, so "offline install" via a
+# git clone is not a supported path.
 # ---------------------------------------------------------------------------
+build/installers/
 build/release-artifacts/
 build/.installer-work/
 
