@@ -52,7 +52,7 @@ export default async function LpHomePage() {
         <p className="text-sm text-slate-500">No overview data available yet.</p>
       )}
 
-      <nav className="flex gap-4">
+      <nav className="flex flex-wrap gap-4">
         <Link
           href="/lp/statements"
           className="inline-flex items-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
@@ -64,6 +64,12 @@ export default async function LpHomePage() {
           className="inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-100"
         >
           Capital calls &amp; distributions
+        </Link>
+        <Link
+          href="/lp/funding-source"
+          className="inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-100"
+        >
+          Funding source
         </Link>
         <form action="/api/auth" method="post" className="ml-auto">
           <button

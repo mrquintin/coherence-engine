@@ -41,7 +41,12 @@ export default async function NoticesPage() {
         Capital-call notices are binding under the LPA — please review and
         acknowledge each notice before its due date. Distribution notices are
         records of the Fund&rsquo;s intent to wire proceeds to your account on
-        file; acknowledgement confirms receipt only.
+        file; acknowledgement confirms receipt only. LP funding accounts are
+        managed from the{' '}
+        <Link className="font-medium underline" href="/lp/funding-source">
+          funding-source page
+        </Link>
+        .
       </p>
 
       {errorMessage && (
