@@ -150,7 +150,7 @@ DROP POLICY IF EXISTS "fund_argument_artifacts_service_all" ON public."fund_argu
 CREATE POLICY "fund_applications_founder_select" ON public."fund_applications"
     FOR SELECT
     TO authenticated
-    USING (EXISTS (SELECT 1 FROM public.fund_founders f WHERE f.id = founder_id AND f.founder_user_id = auth.uid()::text));
+    USING (EXISTS (SELECT 1 FROM public.fund_founders f WHERE f.id = founder_id AND f.founder_user_id = COALESCE(NULLIF(current_setting('request.jwt.claim.sub', true), ''), NULLIF(NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub', ''))));
 CREATE POLICY "fund_applications_service_all" ON public."fund_applications"
     FOR ALL
     TO service_role
@@ -159,7 +159,7 @@ CREATE POLICY "fund_applications_service_all" ON public."fund_applications"
 CREATE POLICY "fund_decisions_founder_select" ON public."fund_decisions"
     FOR SELECT
     TO authenticated
-    USING (EXISTS (SELECT 1 FROM public.fund_applications a JOIN public.fund_founders f ON f.id = a.founder_id WHERE a.id = application_id AND f.founder_user_id = auth.uid()::text));
+    USING (EXISTS (SELECT 1 FROM public.fund_applications a JOIN public.fund_founders f ON f.id = a.founder_id WHERE a.id = application_id AND f.founder_user_id = COALESCE(NULLIF(current_setting('request.jwt.claim.sub', true), ''), NULLIF(NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub', ''))));
 CREATE POLICY "fund_decisions_service_all" ON public."fund_decisions"
     FOR ALL
     TO service_role
@@ -178,7 +178,7 @@ CREATE POLICY "fund_idempotency_records_service_all" ON public."fund_idempotency
 CREATE POLICY "fund_argument_artifacts_founder_select" ON public."fund_argument_artifacts"
     FOR SELECT
     TO authenticated
-    USING (EXISTS (SELECT 1 FROM public.fund_applications a JOIN public.fund_founders f ON f.id = a.founder_id WHERE a.id = application_id AND f.founder_user_id = auth.uid()::text));
+    USING (EXISTS (SELECT 1 FROM public.fund_applications a JOIN public.fund_founders f ON f.id = a.founder_id WHERE a.id = application_id AND f.founder_user_id = COALESCE(NULLIF(current_setting('request.jwt.claim.sub', true), ''), NULLIF(NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub', ''))));
 CREATE POLICY "fund_argument_artifacts_service_all" ON public."fund_argument_artifacts"
     FOR ALL
     TO service_role

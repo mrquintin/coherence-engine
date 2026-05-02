@@ -82,10 +82,13 @@ remain unlinked until they sign in via the portal.
 
 ## Defense-in-depth ownership check
 
-Even with Postgres RLS enforcing `auth.uid() = founder_user_id`, the API-key
+Even with Postgres RLS enforcing `jwt_sub = founder_user_id`, the API-key
 service-role path bypasses RLS. Each founder-scoped route therefore also
 checks `application.founder_id == current_founder.id` before returning
-data. RLS is the floor; the application check is the ceiling.
+data. RLS is the floor; the application check is the ceiling. The policy
+reads `jwt_sub` from PostgREST request settings rather than relying on
+`auth.uid()` schema visibility, which lets the app-owned migration role
+install the policy on Supabase.
 
 ## Layering with the existing API-key middleware
 

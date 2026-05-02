@@ -20,7 +20,9 @@ Design notes
 * **founder scoping.** End-user ``authenticated`` access is scoped through
   ``fund_applications.founder_id -> fund_founders.founder_user_id``. The
   database stores the Supabase ``sub`` claim on the founder row, not on each
-  application row.
+  application row. Policies read the JWT ``sub`` claim from PostgREST request
+  settings instead of depending on ``auth.uid()`` schema visibility, so an
+  app-owned migration role can install them on Supabase.
 * **SQLite is a no-op.** SQLite has no RLS concept; :func:`apply_rls_policies`
   detects the dialect and returns silently so unit tests / CI keep working.
 """
@@ -111,15 +113,22 @@ class RLSPolicy:
 # Policy registry
 # ---------------------------------------------------------------------------
 
+_CURRENT_JWT_SUB = (
+    "COALESCE("
+    "NULLIF(current_setting('request.jwt.claim.sub', true), ''), "
+    "NULLIF(NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub', '')"
+    ")"
+)
+
 _FOUNDER_OWNS_CURRENT_APPLICATION = (
     "EXISTS (SELECT 1 FROM public.fund_founders f "
-    "WHERE f.id = founder_id AND f.founder_user_id = auth.uid()::text)"
+    f"WHERE f.id = founder_id AND f.founder_user_id = {_CURRENT_JWT_SUB})"
 )
 
 _FOUNDER_OWNS_APPLICATION = (
     "EXISTS (SELECT 1 FROM public.fund_applications a "
     "JOIN public.fund_founders f ON f.id = a.founder_id "
-    "WHERE a.id = application_id AND f.founder_user_id = auth.uid()::text)"
+    f"WHERE a.id = application_id AND f.founder_user_id = {_CURRENT_JWT_SUB})"
 )
 
 RLS_POLICIES: list[RLSPolicy] = [
@@ -287,12 +296,10 @@ def ensure_postgres_rls_prerequisites(
 ) -> None:
     """Create Supabase-compatible RLS support objects when missing.
 
-    Supabase already provides the ``authenticated`` / ``service_role`` roles
-    and ``auth.uid()`` helper. The migration gate runs against a plain
-    Postgres service container, so the same policy DDL needs compatibility
-    objects there. This helper is intentionally additive: it does not replace
-    an existing Supabase ``auth.uid()`` implementation or drop anything on
-    downgrade.
+    Supabase already provides the ``authenticated`` / ``service_role`` roles.
+    The migration gate runs against a plain Postgres service container, so
+    the same policy DDL needs compatibility roles there. This helper is
+    intentionally additive and does not drop anything on downgrade.
     """
     from sqlalchemy import text
 

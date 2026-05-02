@@ -66,7 +66,13 @@ CREATE POLICY "fund_applications_founder_select" ON public."fund_applications"
         SELECT 1
         FROM public.fund_founders f
         WHERE f.id = founder_id
-          AND f.founder_user_id = auth.uid()::text
+          AND f.founder_user_id = COALESCE(
+            NULLIF(current_setting('request.jwt.claim.sub', true), ''),
+            NULLIF(
+              NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub',
+              ''
+            )
+          )
       )
     );
 -- ... etc.
