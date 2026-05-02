@@ -1,0 +1,44 @@
+---
+import BaseLayout from '~/layouts/BaseLayout.astro';
+import CaveatBanner from '~/components/CaveatBanner.astro';
+import Citation from '~/components/Citation.astro';
+
+export interface Props {
+  frontmatter: {
+    title: string;
+    summary: string;
+    authors: string[];
+    published: string;
+    updated?: string;
+    status: 'hypothesis' | 'preliminary' | 'replicated' | 'archived';
+    tags: string[];
+    citation?: string;
+  };
+}
+
+const { frontmatter } = Astro.props;
+---
+<BaseLayout
+  title={`${frontmatter.title} — Coherence Engine Research`}
+  description={frontmatter.summary}
+  ogType="article"
+  publishedTime={frontmatter.published}
+  updatedTime={frontmatter.updated}
+>
+  <article class="prose">
+    <header class="mb-8 not-prose">
+      <p class="text-sm uppercase tracking-wide text-muted">
+        Research · status: {frontmatter.status}
+      </p>
+      <h1 class="text-3xl md:text-4xl font-semibold tracking-tight mt-2">{frontmatter.title}</h1>
+      <p class="mt-3 text-muted">{frontmatter.summary}</p>
+      <p class="mt-2 text-sm text-muted">
+        {frontmatter.authors.join(', ')} · published {frontmatter.published}
+        {frontmatter.updated ? ` · updated ${frontmatter.updated}` : ''}
+      </p>
+    </header>
+    <CaveatBanner />
+    <slot />
+    <Citation citation={frontmatter.citation} title={frontmatter.title} authors={frontmatter.authors} published={frontmatter.published} />
+  </article>
+</BaseLayout>

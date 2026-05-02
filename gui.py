@@ -10,8 +10,6 @@ from tkinter import ttk, filedialog, scrolledtext, messagebox
 import threading
 import json
 import os
-import sys
-import time
 
 
 # ---------------------------------------------------------------------------
@@ -611,8 +609,9 @@ class CoherenceEngineApp:
 
             self.root.after(0, lambda: self._display_results(result))
 
-        except Exception as e:
-            self.root.after(0, lambda: self._analysis_error(str(e)))
+        except Exception as exc:
+            error_msg = str(exc)
+            self.root.after(0, lambda: self._analysis_error(error_msg))
 
         finally:
             self.root.after(0, self._analysis_done)

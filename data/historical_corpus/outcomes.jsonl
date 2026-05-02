@@ -1,0 +1,6 @@
+# outcomes.jsonl — realized-outcome labels for the historical-startups validation corpus (prompt 43).
+# One JSON object per line conforming to server/fund/schemas/datasets/outcome_label.v1.json.
+# Comment lines start with '#' and are ignored by the loader.
+# Provenance is REQUIRED — rows without outcome_provenance.{source,url,retrieved_at,retrieved_by} are rejected.
+# acquired|ipo|shutdown require minimum two-source corroboration; see docs/specs/outcome_labeling.md.
+# 'unknown' is acceptable but excluded from the default study export.

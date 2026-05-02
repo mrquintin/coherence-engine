@@ -1,0 +1,28 @@
+{
+  "company_name": "anon_c05a86546a652411",
+  "country": "DE",
+  "deck_uri": "coh://local/historical-corpus/seeds/080bd9e0-c0af-78aa-888c-df6f47104e7b/deck.pdf",
+  "domain_primary": "biotech",
+  "eligibility": {
+    "consent_documented": true,
+    "date_window_ok": true,
+    "evidence_floor_ok": true,
+    "no_training_overlap_ok": true
+  },
+  "evidence_floor": {
+    "n_metrics_cited": 5,
+    "n_propositions": 14,
+    "n_sources_cited": 4
+  },
+  "memo_uri": "coh://local/historical-corpus/seeds/080bd9e0-c0af-78aa-888c-df6f47104e7b/memo.md",
+  "pitch_id": "080bd9e0-c0af-78aa-888c-df6f47104e7b",
+  "pitch_year": 2016,
+  "provenance": {
+    "consent_documented": true,
+    "ingested_at": "2026-04-25T00:00:00+00:00",
+    "ingestion_run_id": "ing_seed00000000seed",
+    "source": "synthetic"
+  },
+  "schema_version": "1",
+  "transcript_uri": "coh://local/historical-corpus/seeds/080bd9e0-c0af-78aa-888c-df6f47104e7b/transcript.txt"
+}

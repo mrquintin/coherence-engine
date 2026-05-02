@@ -2,7 +2,6 @@
 
 import pytest
 from coherence_engine.core.parser import ArgumentParser
-from coherence_engine.core.types import Proposition, ArgumentStructure
 
 
 @pytest.fixture

@@ -1,0 +1,603 @@
+name: CI
+
+# Consolidated CI matrix (Wave 17, prompt 65 of 70).
+#
+# Replaces ad-hoc duplication across founder_portal.yml / partner_dashboard.yml /
+# site.yml / migrations.yml by routing the same lint / type / unit / integration /
+# E2E / build / preview-deploy stages through a single workflow with `paths`
+# filters and `needs:` dependencies. Per-app workflows still exist as referenced
+# entry points (do NOT remove them — they preserve directory-scoped pull-request
+# checks for app-only changes) and their tests are mirrored here.
+#
+# Required checks for `main` merge (configure in branch protection):
+#   lint, type, unit_backend, build_backend, release_readiness
+
+on:
+  pull_request:
+    paths:
+      - 'coherence_engine/**'
+      - 'core/**'
+      - 'domain/**'
+      - 'server/**'
+      - 'tests/**'
+      - 'apps/**'
+      - 'alembic/**'
+      - 'deploy/**'
+      - 'pyproject.toml'
+      - 'requirements*.txt'
+      - 'Dockerfile*'
+      - '.github/workflows/ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'coherence_engine/**'
+      - 'core/**'
+      - 'domain/**'
+      - 'server/**'
+      - 'tests/**'
+      - 'apps/**'
+      - 'alembic/**'
+      - 'deploy/**'
+      - 'pyproject.toml'
+      - 'requirements*.txt'
+      - 'Dockerfile*'
+      - '.github/workflows/ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  pull-requests: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.13'
+  NODE_VERSION: '20'
+  PNPM_VERSION: '9.12.0'
+  REGISTRY: ghcr.io
+
+jobs:
+  # ------------------------------------------------------------------ #
+  # changes — path-filter gate so frontend changes do not run the      #
+  # backend integration suite (and vice versa).                         #
+  # ------------------------------------------------------------------ #
+  changes:
+    name: detect changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      server: ${{ steps.filter.outputs.server }}
+      apps: ${{ steps.filter.outputs.apps }}
+      founder_portal: ${{ steps.filter.outputs.founder_portal }}
+      partner_dashboard: ${{ steps.filter.outputs.partner_dashboard }}
+      lp_portal: ${{ steps.filter.outputs.lp_portal }}
+      site: ${{ steps.filter.outputs.site }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            server:
+              - 'coherence_engine/**'
+              - 'core/**'
+              - 'domain/**'
+              - 'server/**'
+              - 'tests/**'
+              - 'alembic/**'
+              - 'pyproject.toml'
+              - 'requirements*.txt'
+            apps:
+              - 'apps/**'
+            founder_portal:
+              - 'apps/founder_portal/**'
+            partner_dashboard:
+              - 'apps/partner_dashboard/**'
+            lp_portal:
+              - 'apps/lp_portal/**'
+            site:
+              - 'apps/site/**'
+
+  # ------------------------------------------------------------------ #
+  # lint — ruff (backend) + eslint (each Next.js app).                  #
+  # ------------------------------------------------------------------ #
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [changes]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        if: needs.changes.outputs.server == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install ruff
+        if: needs.changes.outputs.server == 'true'
+        run: pip install ruff
+
+      - name: Ruff check
+        if: needs.changes.outputs.server == 'true'
+        run: ruff check .
+
+      - name: Set up Node.js
+        if: needs.changes.outputs.apps == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enable pnpm
+        if: needs.changes.outputs.apps == 'true'
+        run: |
+          corepack enable
+          corepack prepare pnpm@${{ env.PNPM_VERSION }} --activate
+
+      - name: Cache pnpm store
+        if: needs.changes.outputs.apps == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-lint-${{ runner.os }}-${{ hashFiles('apps/**/package.json') }}
+
+      - name: ESLint each app
+        if: needs.changes.outputs.apps == 'true'
+        run: |
+          for app in apps/founder_portal apps/partner_dashboard apps/lp_portal apps/site; do
+            if [ -f "$app/package.json" ]; then
+              echo "::group::lint $app"
+              (
+                cd "$app"
+                pnpm install --no-frozen-lockfile
+                if node -e "process.exit(require('./package.json').scripts?.lint ? 0 : 1)"; then
+                  pnpm lint
+                else
+                  echo "No lint script declared for $app; skipping lint only for this package."
+                fi
+              )
+              echo "::endgroup::"
+            fi
+          done
+
+  # ------------------------------------------------------------------ #
+  # type — mypy strict typed service slice + tsc --noEmit (frontends).  #
+  # ------------------------------------------------------------------ #
+  type:
+    name: type
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [changes]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        if: needs.changes.outputs.server == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install backend + mypy
+        if: needs.changes.outputs.server == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install mypy
+
+      - name: mypy --strict typed operational services
+        if: needs.changes.outputs.server == 'true'
+        run: |
+          rm -rf /tmp/coherence_engine
+          mkdir -p /tmp/coherence_engine
+          tar \
+            --exclude='./.git' \
+            --exclude='./.venv' \
+            --exclude='./node_modules' \
+            --exclude='./apps/*/node_modules' \
+            --exclude='./apps/*/.next' \
+            -C "${GITHUB_WORKSPACE}" -cf - . | tar -C /tmp/coherence_engine -xf -
+          cd /tmp/coherence_engine
+          mypy --strict --follow-imports=skip \
+            server/fund/services/policy_parameter_proposals.py \
+            server/fund/services/reserve_optimizer.py \
+            server/fund/services/governed_historical_dataset.py \
+            server/fund/services/calibration_export.py
+
+      - name: Set up Node.js
+        if: needs.changes.outputs.apps == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enable pnpm
+        if: needs.changes.outputs.apps == 'true'
+        run: |
+          corepack enable
+          corepack prepare pnpm@${{ env.PNPM_VERSION }} --activate
+
+      - name: tsc --noEmit each app
+        if: needs.changes.outputs.apps == 'true'
+        run: |
+          for app in apps/founder_portal apps/partner_dashboard apps/lp_portal apps/site; do
+            if [ -f "$app/package.json" ]; then
+              echo "::group::typecheck $app"
+              (cd "$app" && pnpm install --no-frozen-lockfile && pnpm typecheck)
+              echo "::endgroup::"
+            fi
+          done
+
+  # ------------------------------------------------------------------ #
+  # unit_backend — fast pytest pass (no integration markers).           #
+  # ------------------------------------------------------------------ #
+  unit_backend:
+    name: unit_backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [changes, lint]
+    if: needs.changes.outputs.server == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install backend deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest pytest-asyncio fastapi python-multipart pydantic-settings sqlalchemy alembic "argon2-cffi" cryptography jinja2 jsonschema httpx pyyaml numpy boto3
+      - name: pytest (fast)
+        run: python -m pytest -q -m "not integration and not e2e and not cloud_integration" --maxfail=5
+
+  # ------------------------------------------------------------------ #
+  # integration_backend — gated; spins up Postgres + Redis services.    #
+  # Only runs when server paths changed AND we are on PR/main, never    #
+  # against unrelated frontend-only PRs.                                #
+  # ------------------------------------------------------------------ #
+  integration_backend:
+    name: integration_backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [changes, unit_backend]
+    if: needs.changes.outputs.server == 'true'
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: coherence_ci
+          POSTGRES_PASSWORD: coherence_ci
+          POSTGRES_DB: coherence_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U coherence_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://coherence_ci:coherence_ci@localhost:5432/coherence_ci
+      REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install backend + alembic
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest pytest-asyncio fastapi python-multipart pydantic-settings sqlalchemy alembic psycopg2-binary redis "argon2-cffi" cryptography jinja2 jsonschema httpx pyyaml numpy boto3
+      - name: Apply migrations
+        run: alembic upgrade head
+      - name: pytest -m integration
+        run: python -m pytest -q -m integration --maxfail=5
+
+  # ------------------------------------------------------------------ #
+  # unit_frontend — vitest in each Next.js app.                         #
+  # ------------------------------------------------------------------ #
+  unit_frontend:
+    name: unit_frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [changes, lint]
+    if: needs.changes.outputs.apps == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - founder_portal
+          - partner_dashboard
+          - lp_portal
+          - site
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.app }}
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: http://localhost:3001
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: anon-key-stub-for-ci
+      BACKEND_API_URL: http://localhost:8000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${{ env.PNPM_VERSION }} --activate
+        working-directory: ${{ github.workspace }}
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-${{ matrix.app }}-${{ runner.os }}-${{ hashFiles(format('apps/{0}/package.json', matrix.app)) }}
+      - name: Install deps
+        run: pnpm install --no-frozen-lockfile
+      - name: Vitest
+        run: pnpm test -- --passWithNoTests
+
+  # ------------------------------------------------------------------ #
+  # e2e_founder_portal — Playwright smoke for the founder portal.       #
+  # ------------------------------------------------------------------ #
+  e2e_founder_portal:
+    name: e2e_founder_portal
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [changes, unit_frontend]
+    if: needs.changes.outputs.founder_portal == 'true'
+    defaults:
+      run:
+        working-directory: apps/founder_portal
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: http://localhost:3001
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: anon-key-stub-for-ci
+      BACKEND_API_URL: http://localhost:8000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${{ env.PNPM_VERSION }} --activate
+        working-directory: ${{ github.workspace }}
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-e2e-${{ runner.os }}-${{ hashFiles('apps/founder_portal/package.json') }}
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('apps/founder_portal/package.json') }}
+      - name: Install deps
+        run: pnpm install --no-frozen-lockfile
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Playwright smoke
+        run: pnpm test:e2e
+
+  # ------------------------------------------------------------------ #
+  # build_backend — Python wheel + Docker image. Pushes to GHCR on main.#
+  # ------------------------------------------------------------------ #
+  build_backend:
+    name: build_backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [changes, unit_backend, type]
+    if: needs.changes.outputs.server == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Build wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-wheel
+          path: dist/*.whl
+          if-no-files-found: warn
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build (and push on main) backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: ${{ env.REGISTRY }}/${{ github.repository }}/backend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ------------------------------------------------------------------ #
+  # build_apps — Next.js builds for each app, plus Vercel preview on PR #
+  # ------------------------------------------------------------------ #
+  build_apps:
+    name: build_apps
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [changes, unit_frontend, type]
+    if: needs.changes.outputs.apps == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - founder_portal
+          - partner_dashboard
+          - lp_portal
+          - site
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.app }}
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: anon-key-stub-for-ci
+      BACKEND_API_URL: http://localhost:8000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@${{ env.PNPM_VERSION }} --activate
+        working-directory: ${{ github.workspace }}
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-build-${{ matrix.app }}-${{ runner.os }}-${{ hashFiles(format('apps/{0}/package.json', matrix.app)) }}
+      - name: Install deps
+        run: pnpm install --no-frozen-lockfile
+      - name: Build
+        run: pnpm build
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-${{ matrix.app }}-build
+          path: |
+            apps/${{ matrix.app }}/.next
+            apps/${{ matrix.app }}/dist
+          if-no-files-found: ignore
+
+  # ------------------------------------------------------------------ #
+  # deploy_preview — Vercel preview URL for each app on PR. Skipped     #
+  # entirely when VERCEL_TOKEN is unset (forks, secret-less runs).      #
+  # ------------------------------------------------------------------ #
+  deploy_preview:
+    name: deploy_preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [changes, build_apps]
+    if: github.event_name == 'pull_request' && needs.changes.outputs.apps == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - founder_portal
+          - partner_dashboard
+          - lp_portal
+          - site
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip if Vercel not configured
+        id: gate
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets[format('VERCEL_PROJECT_ID_{0}', matrix.app)] }}
+        run: |
+          if [ -z "${VERCEL_TOKEN}" ] || [ -z "${VERCEL_ORG_ID}" ] || [ -z "${VERCEL_PROJECT_ID}" ]; then
+            echo "vercel_configured=false" >> "${GITHUB_OUTPUT}"
+            echo "Vercel preview is not fully configured for ${{ matrix.app }}; skipping preview." >&2
+          else
+            echo "vercel_configured=true" >> "${GITHUB_OUTPUT}"
+          fi
+      - name: Deploy Vercel preview
+        if: steps.gate.outputs.vercel_configured == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets[format('VERCEL_PROJECT_ID_{0}', matrix.app)] }}
+        run: |
+          npx vercel pull --yes --environment=preview --token="${VERCEL_TOKEN}"
+          npx vercel build --token="${VERCEL_TOKEN}"
+          npx vercel deploy --prebuilt --token="${VERCEL_TOKEN}"
+
+  # ------------------------------------------------------------------ #
+  # deploy_staging — gated push-to-staging on `main` only.              #
+  # Requires manual sign-off via the `staging` environment in repo      #
+  # settings (reviewers + branch policy enforced there).                #
+  # ------------------------------------------------------------------ #
+  deploy_staging:
+    name: deploy_staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [build_backend, build_apps, release_readiness]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment:
+      name: staging
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: deploy
+        name: Notify staging deploy hook
+        env:
+          STAGING_DEPLOY_HOOK: ${{ secrets.STAGING_DEPLOY_HOOK }}
+        run: |
+          if [ -z "${STAGING_DEPLOY_HOOK}" ]; then
+            echo "Staging deploy hook not configured; skipping." >&2
+            echo "url=https://staging.coherence.invalid/skipped" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          # Trigger downstream deploy webhook (e.g. ArgoCD / Helm runner / Vercel hook).
+          curl -fsSL -X POST "${STAGING_DEPLOY_HOOK}" \
+            -H 'Content-Type: application/json' \
+            -d "{\"sha\":\"${GITHUB_SHA}\",\"ref\":\"${GITHUB_REF}\"}"
+          echo "url=https://staging.coherence.invalid/${GITHUB_SHA:0:7}" >> "${GITHUB_OUTPUT}"
+
+  # ------------------------------------------------------------------ #
+  # release_readiness — runs the deterministic readiness checklist.     #
+  # ------------------------------------------------------------------ #
+  release_readiness:
+    name: release_readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [unit_backend, type]
+    if: always() && needs.unit_backend.result != 'failure' && needs.type.result != 'failure'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[fund-api]"
+      - name: Run release readiness check
+        run: |
+          mkdir -p artifacts
+          python deploy/scripts/release_readiness_check.py \
+            --json-out artifacts/release-readiness.json \
+            --markdown-out artifacts/release-readiness.md
+      - name: Upload readiness report
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-readiness
+          path: artifacts/release-readiness.*
+          if-no-files-found: warn

@@ -1,0 +1,45 @@
+schema_version: chaos-scenario-v1
+name: s3_outage
+description: >-
+  Stops the MinIO (S3-compatible) container while a workload is in
+  flight. Object-storage writes (decision artifacts, recordings) must
+  fail fast with retryable errors; the worker must mark its job
+  retryable rather than collapsing the row to 'failed_terminal' (which
+  would lose the input). Once MinIO comes back, in-flight retries
+  succeed and the artifact replay still produces byte-identical bytes.
+
+slo:
+  end_to_end_seconds: 120
+
+pre_state:
+  required_services:
+    - postgres_primary
+    - redis
+    - minio
+    - api
+    - scoring_worker
+  startup_timeout_seconds: 60
+
+perturbation:
+  - action: stop
+    target: minio
+    duration_seconds: 8
+    note: Simulate full S3 outage, all PutObject / GetObject calls fail.
+  - action: start
+    target: minio
+
+workload:
+  kind: synthetic_application_submit
+  count: 2
+  application_fixture: tests/integration/fixtures/e2e_minimal_application.json
+  wait_for_completion_timeout_seconds: 120
+
+post_conditions:
+  - kind: no_orphaned_scoring_jobs
+  - kind: idempotency_intact
+  - kind: byte_identical_artifact_replay
+    detail: >-
+      Even after a half-written object was rolled back, replaying the
+      artifact compiler from the original inputs must produce
+      byte-identical artifact bytes. This is the determinism contract.
+  - kind: end_to_end_within_slo

@@ -1,0 +1,63 @@
+---
+title: "Decision Policy v1"
+summary: "The formal policy that maps a coherence score and a small set of partner judgments to an underwriting decision. Public version of the policy used to gate pre-seed offers."
+authors:
+  - "Coherence Engine Research"
+published: "2026-03-22"
+status: "preliminary"
+tags:
+  - "decision-policy"
+  - "underwriting"
+  - "policy"
+citation: "Coherence Engine Research (2026). Decision Policy v1. Coherence Engine Working Paper CE-2026-04."
+---
+
+## Why a written policy
+
+A scoring model without a written policy is a black box. We publish the decision policy so that founders, LPs, and replicators can see exactly how a coherence score becomes a fund decision. This page is the public version of `decision-policy-v1` (the version string the engine emits in every decision artefact).
+
+## Inputs
+
+- $\text{Coh}(\Gamma) \in [0, 1]$ — composite coherence score from the engine.
+- $\mathbf{p} \in \{0,1\}^k$ — a small set of partner-driven binary judgments (e.g. "founder coachable", "market timing plausible"). $k$ is in single digits.
+- $\mathbf{c}$ — context flags: domain, stage, special situations.
+
+## Decision rule (stated, not concealed)
+
+$$
+\text{Offer}(\Gamma) = \mathbb{1}\bigl[\text{Coh}(\Gamma) \geq \tau(\mathbf{c}) \;\wedge\; \text{partner-vote}(\mathbf{p}) \geq m(\mathbf{c}) \;\wedge\; \text{no-vetoes}(\mathbf{c})\bigr].
+$$
+
+Where:
+
+- $\tau(\mathbf{c})$ is the per-context threshold. For pre-seed software in our current cohort, $\tau = 0.62$. The thresholds are publicly listed; they shift over time as more data arrives.
+- $\text{partner-vote}(\mathbf{p})$ is the count of "yes" partner judgments. $m(\mathbf{c})$ is the required minimum (typically $\lceil k/2 \rceil$).
+- "no-vetoes" covers a short list of binary disqualifiers (regulatory exposure, known fraud, etc.) that any partner can flag.
+
+## Manual override
+
+Either direction. A partner can override an offer to a pass, or a pass to an offer. Every override writes a `decision_override` record with:
+
+- the original recommendation,
+- the override direction,
+- the partner ID,
+- a free-text reason field (mandatory),
+- a numeric override score (1–5) capturing how confident the override is.
+
+Overrides are part of the published validation cohort. We will report rates and outcomes of overridden vs. non-overridden decisions when the cohort matures.
+
+## What the policy is *not*
+
+- It is not a model that predicts outcomes. The threshold $\tau$ is not derived from a fitted predictor; it is a deliberate cut chosen ex ante and held fixed within a cohort.
+- It is not a substitute for partner judgment. Partner votes are explicitly part of the rule.
+- It is not LP-restricted. This page is public; the cohort-level performance data is published on the [results page](/results) when available.
+
+## Versioning
+
+Policy versions are immutable. `decision-policy-v1` is what is in force in the current cohort; a future v2 will be a separate, published document, and decisions made under v1 will continue to refer back to this page.
+
+## Limits
+
+- The policy gates on a coherence score whose predictive validity is unproven. If validation comes back negative, $\tau$ and the partner-vote weighting will both need to be re-examined.
+- Threshold $\tau$ was set by judgment, not by a calibration exercise. We expect it to move once we have enough out-of-sample data to calibrate.
+- Cohort sizes are small. Statements about override rates will be underpowered for the first several cohorts.

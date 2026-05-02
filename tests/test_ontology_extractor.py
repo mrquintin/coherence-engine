@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import sys
 from pathlib import Path
 
 from coherence_engine.core.types import (

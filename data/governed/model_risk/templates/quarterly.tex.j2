@@ -1,0 +1,181 @@
+\documentclass[11pt,letterpaper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[margin=1in]{geometry}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{fancyhdr}
+\usepackage{parskip}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small MRM quarterly report --- [[ quarter_label | latex ]]}
+\rhead{\small digest [[ input_digest[:12] | latex ]]}
+\usepackage{lastpage}
+\cfoot{\small page \thepage{} of \pageref{LastPage}}
+
+\setlength{\headheight}{14pt}
+
+\title{Coherence Engine: Quarterly Model-Risk-Management Report \\ \large [[ quarter_label | latex ]]}
+\author{Model Risk Working Group}
+\date{[[ generated_at | latex ]]}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+\section*{Disclaimer}
+[[ disclaimer | latex ]]
+
+\section{Reporting Period}
+\begin{itemize}
+  \item Quarter: \texttt{[[ quarter_label | latex ]]}
+  \item Period covered: [[ quarter_start | latex ]] to [[ quarter_end | latex ]]
+  \item Generated at: [[ generated_at | latex ]]
+  \item Schema: \texttt{[[ schema_version | latex ]]}
+  \item Input digest: \texttt{[[ input_digest | latex ]]}
+\end{itemize}
+
+\section{Model Purpose and Limitations}
+[% if has_model_purpose %]
+\subsection*{Purpose}
+[[ model_purpose | latex ]]
+[% else %]
+\subsection*{Purpose}
+\emph{(no model purpose recorded for this quarter)}
+[% endif %]
+
+\subsection*{Limitations}
+[% if has_limitations %]
+\begin{itemize}
+[% for lim in model_limitations %]
+  \item [[ lim | latex ]]
+[% endfor %]
+\end{itemize}
+[% else %]
+\emph{(no model limitations recorded for this quarter)}
+[% endif %]
+
+\section{Validation Study Summary}
+[% if has_validation %]
+\begin{itemize}
+  \item Validation schema: \texttt{[[ validation.schema_version | latex ]]}
+  \item N (known outcome): [[ validation.n_known_outcome ]]
+  \item AUC (ROC): [[ validation.auc_roc | fmt6 ]]
+  \item Brier score: [[ validation.brier_score | fmt6 ]]
+  \item Primary alpha: [[ validation.primary_alpha | fmt6 ]]
+  \item Reject H0 (primary): [[ validation.primary_rejected_null | latex ]]
+  \item Coherence coefficient: [[ validation.coherence_point_estimate | fmt6 ]]
+  \item Coherence 99\% CI: ([[ validation.coherence_ci_99_lower | fmt6 ]], [[ validation.coherence_ci_99_upper | fmt6 ]])
+  \item Data hash: \texttt{[[ validation.data_hash | latex ]]}
+\end{itemize}
+[% else %]
+\emph{(no validation study attached for this quarter)}
+[% endif %]
+
+\section{Calibration Drift Indicators}
+[% if has_drift %]
+\begin{longtable}{lrrrrl}
+\toprule
+Metric & Baseline & Current & Delta & Threshold & Breached \\
+\midrule
+\endhead
+[% for d in drift_indicators %]
+[[ d.metric | latex ]] & [[ d.baseline_value | fmt6 ]] & [[ d.current_value | fmt6 ]] & [[ d.delta | fmt6 ]] & [[ d.threshold | fmt6 ]] & [[ d.breached | latex ]] \\
+[% endfor %]
+\bottomrule
+\end{longtable}
+[% else %]
+\emph{(no drift indicators reported for this quarter)}
+[% endif %]
+
+\section{Override Frequency by Partner}
+[% if has_overrides %]
+Total overrides this quarter: [[ override_total_count ]].
+\begin{longtable}{lrrrl}
+\toprule
+Partner (hash) & N overrides & Pass$\to$reject & Reject$\to$pass & Top reason \\
+\midrule
+\endhead
+[% for s in override_partner_stats %]
+\texttt{[[ s.partner_hash | latex ]]} & [[ s.n_overrides ]] & [[ s.n_pass_to_reject ]] & [[ s.n_reject_to_pass ]] & [[ s.most_common_reason_code | latex ]] \\
+[% endfor %]
+\bottomrule
+\end{longtable}
+[% else %]
+\emph{(no override activity reported for this quarter)}
+[% endif %]
+
+\section{Anti-Gaming Alert Rates}
+[% if has_anti_gaming %]
+\begin{longtable}{lrrr}
+\toprule
+Period & N decisions & N alerts & Rate \\
+\midrule
+\endhead
+[% for r in anti_gaming_rates %]
+[[ r.period_label | latex ]] & [[ r.n_decisions ]] & [[ r.n_alerts ]] & [[ r.rate | pct ]] \\
+[% endfor %]
+\bottomrule
+\end{longtable}
+[% else %]
+\emph{(no anti-gaming alert telemetry attached for this quarter)}
+[% endif %]
+
+\section{Decision Reproducibility Audits}
+[% if has_reproducibility %]
+\begin{longtable}{lrrrl}
+\toprule
+Audit & N replays & N matching & Match rate & Notes \\
+\midrule
+\endhead
+[% for a in reproducibility_audits %]
+\texttt{[[ a.audit_id | latex ]]} & [[ a.n_replays ]] & [[ a.n_matching ]] & [[ a.match_rate | pct ]] & [[ a.notes | latex ]] \\
+[% endfor %]
+\bottomrule
+\end{longtable}
+[% else %]
+\emph{(no reproducibility audits attached for this quarter)}
+[% endif %]
+
+\section{Known Weaknesses}
+[% if has_weaknesses %]
+\begin{longtable}{llllll}
+\toprule
+ID & Title & Severity & Status & Owner & Target \\
+\midrule
+\endhead
+[% for b in known_weaknesses %]
+\texttt{[[ b.item_id | latex ]]} & [[ b.title | latex ]] & [[ b.severity | latex ]] & [[ b.status | latex ]] & [[ b.owner | latex ]] & [[ b.target_quarter | latex ]] \\
+[% endfor %]
+\bottomrule
+\end{longtable}
+[% else %]
+\emph{(no known weaknesses recorded)}
+[% endif %]
+
+\section{Remediation Backlog}
+[% if has_remediation %]
+\begin{longtable}{llllll}
+\toprule
+ID & Title & Severity & Status & Owner & Target \\
+\midrule
+\endhead
+[% for b in remediation_backlog %]
+\texttt{[[ b.item_id | latex ]]} & [[ b.title | latex ]] & [[ b.severity | latex ]] & [[ b.status | latex ]] & [[ b.owner | latex ]] & [[ b.target_quarter | latex ]] \\
+[% endfor %]
+\bottomrule
+\end{longtable}
+[% else %]
+\emph{(no remediation backlog items recorded)}
+[% endif %]
+
+\section*{Provenance}
+This document was assembled by \texttt{model\_risk\_report.assemble\_quarterly\_report}
+and rendered by \texttt{model\_risk\_renderer\_pdf.render\_pdf} from the inputs
+identified by digest \texttt{[[ input_digest | latex ]]}.
+
+\end{document}

@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coherence-engine/datasets/historical_pitch/v1",
+  "title": "HistoricalPitchV1",
+  "description": "One row in the historical-startups validation corpus (prompt 42). Each row anonymizes a single founder pitch with object-storage URIs for the source artifacts (transcript, deck, memo), an evidence floor, eligibility flags, and provenance.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "pitch_id",
+    "company_name",
+    "domain_primary",
+    "pitch_year",
+    "country",
+    "transcript_uri",
+    "deck_uri",
+    "memo_uri",
+    "evidence_floor",
+    "eligibility",
+    "provenance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "string", "const": "1"},
+    "pitch_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "description": "UUIDv7 (lowercase hex)."
+    },
+    "company_name": {
+      "type": "string",
+      "pattern": "^anon_[0-9a-f]{16}$",
+      "description": "Anonymized hash; never the cleartext company name."
+    },
+    "domain_primary": {
+      "type": "string",
+      "enum": [
+        "fintech",
+        "healthtech",
+        "biotech",
+        "deeptech",
+        "consumer",
+        "enterprise_saas",
+        "marketplace",
+        "climate",
+        "edtech",
+        "other"
+      ]
+    },
+    "pitch_year": {"type": "integer", "minimum": 2005, "maximum": 2030},
+    "country": {"type": "string", "pattern": "^[A-Z]{2}$", "description": "ISO 3166-1 alpha-2 country code."},
+    "transcript_uri": {"type": "string", "pattern": "^coh://[a-z]+/[a-z0-9_-]+/[A-Za-z0-9._/-]+$"},
+    "deck_uri": {"type": "string", "pattern": "^coh://[a-z]+/[a-z0-9_-]+/[A-Za-z0-9._/-]+$"},
+    "memo_uri": {"type": "string", "pattern": "^coh://[a-z]+/[a-z0-9_-]+/[A-Za-z0-9._/-]+$"},
+    "evidence_floor": {
+      "type": "object",
+      "required": ["n_propositions", "n_metrics_cited", "n_sources_cited"],
+      "additionalProperties": false,
+      "properties": {
+        "n_propositions": {"type": "integer", "minimum": 0},
+        "n_metrics_cited": {"type": "integer", "minimum": 0},
+        "n_sources_cited": {"type": "integer", "minimum": 0}
+      }
+    },
+    "eligibility": {
+      "type": "object",
+      "required": [
+        "date_window_ok",
+        "evidence_floor_ok",
+        "no_training_overlap_ok",
+        "consent_documented"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "date_window_ok": {"type": "boolean"},
+        "evidence_floor_ok": {"type": "boolean"},
+        "no_training_overlap_ok": {"type": "boolean"},
+        "consent_documented": {"type": "boolean"}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["source", "ingested_at", "ingestion_run_id", "consent_documented"],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": [
+            "crunchbase",
+            "cb_insights",
+            "operator_archive",
+            "public_filings",
+            "synthetic"
+          ]
+        },
+        "ingested_at": {"type": "string", "minLength": 1, "description": "ISO-8601 timestamp."},
+        "ingestion_run_id": {"type": "string", "minLength": 1},
+        "consent_documented": {
+          "type": "boolean",
+          "description": "Real founder pitches require true; synthetic rows are exempt but must be flagged source=synthetic."
+        }
+      }
+    }
+  }
+}

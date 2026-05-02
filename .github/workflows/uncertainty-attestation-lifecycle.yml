@@ -34,7 +34,6 @@ jobs:
       check_kind: attestation_aging
       governance_environment_slug: uncertainty-governance-attestation-lifecycle
     secrets: inherit
-    environment: uncertainty-governance-attestation-lifecycle
 
   # Recurring, network-free proof that canary/prod escalation channels resolve from the routing map.
   governance-escalation-routing-proof:

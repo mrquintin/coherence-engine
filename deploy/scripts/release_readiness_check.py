@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
+import os
 import re
 import sys
 import traceback
@@ -548,6 +549,86 @@ def _check_docs_prompt_recap(filename: str, check_id: str) -> CheckResult:
     )
 
 
+def _check_migration_ci_gate() -> CheckResult:
+    """Run the migration CI gate (prompt 24) and surface its verdict.
+
+    The gate is skip-on-unconfigured by design: when ``MIGRATION_GATE_PG_URL``
+    is absent it exits ``0`` with a "not configured" message, which we record
+    here as a ``pass`` with reason ``migration_ci_gate_skipped`` so operators
+    can see at a glance that the readiness report ran without a Postgres
+    backend.
+    """
+
+    check_id = "migration_ci_gate"
+    try:
+        from deploy.scripts import migration_ci_gate  # type: ignore[import-not-found]
+    except Exception:
+        # Fall back to absolute path import — release readiness can run from a
+        # checkout where ``deploy`` is not on sys.path as a package.
+        import importlib.util
+
+        gate_path = _REPO_ROOT / "deploy" / "scripts" / "migration_ci_gate.py"
+        if not gate_path.is_file():
+            return CheckResult(
+                check_id=check_id,
+                status=STATUS_ERROR,
+                reason_code="migration_ci_gate_missing",
+                detail=f"missing {gate_path}",
+            )
+        spec = importlib.util.spec_from_file_location("migration_ci_gate", gate_path)
+        if spec is None or spec.loader is None:
+            return CheckResult(
+                check_id=check_id,
+                status=STATUS_ERROR,
+                reason_code="migration_ci_gate_import_failed",
+                detail="could not build module spec for migration_ci_gate",
+            )
+        migration_ci_gate = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(migration_ci_gate)
+
+    pg_url = os.environ.get("MIGRATION_GATE_PG_URL", "").strip()
+    if not pg_url:
+        return CheckResult(
+            check_id=check_id,
+            status=STATUS_PASS,
+            reason_code="migration_ci_gate_skipped",
+            detail="MIGRATION_GATE_PG_URL unset — gate skipped (CI runs the live cycle).",
+            evidence={"configured": False},
+        )
+
+    try:
+        exit_code, message = migration_ci_gate.run_gate(pg_url)
+    except Exception as exc:
+        return CheckResult(
+            check_id=check_id,
+            status=STATUS_ERROR,
+            reason_code="migration_ci_gate_raised",
+            detail=f"{type(exc).__name__}: {exc}",
+        )
+    if exit_code == migration_ci_gate.EXIT_OK:
+        return CheckResult(
+            check_id=check_id,
+            status=STATUS_PASS,
+            detail=message,
+            evidence={"configured": True},
+        )
+    if exit_code == migration_ci_gate.EXIT_SCHEMA_DRIFT:
+        return CheckResult(
+            check_id=check_id,
+            status=STATUS_FAIL,
+            reason_code="migration_ci_gate_schema_drift",
+            detail=message,
+            evidence={"configured": True, "exit_code": exit_code},
+        )
+    return CheckResult(
+        check_id=check_id,
+        status=STATUS_ERROR,
+        reason_code="migration_ci_gate_transient",
+        detail=message,
+        evidence={"configured": True, "exit_code": exit_code},
+    )
+
+
 def _check_status_doc_prompt_recap() -> CheckResult:
     return _check_docs_prompt_recap(
         "COHERENCE_ENGINE_PROJECT_STATUS.txt",
@@ -573,6 +654,7 @@ CHECKS: Tuple[Tuple[str, Any], ...] = (
     ("backtest_spec", _check_backtest_spec_present),
     ("red_team_expected_matrix", _check_red_team_expected_matrix_present),
     ("admin_dashboard_router", _check_admin_dashboard_router_registered),
+    ("migration_ci_gate", _check_migration_ci_gate),
     ("status_doc_prompt_recap", _check_status_doc_prompt_recap),
     ("continuation_doc_prompt_recap", _check_continuation_doc_prompt_recap),
 )

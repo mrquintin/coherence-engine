@@ -10,7 +10,7 @@ import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, MutableMapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, MutableMapping, Optional, Tuple
 
 GOVERNANCE_HMAC_ENV = "COHERENCE_UNCERTAINTY_GOVERNANCE_HMAC_KEY"
 

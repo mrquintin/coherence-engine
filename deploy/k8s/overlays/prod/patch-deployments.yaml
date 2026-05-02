@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: coherence-fund-api
+  namespace: coherence-fund
 spec:
   replicas: 3
   template:
@@ -20,6 +21,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: coherence-fund-worker
+  namespace: coherence-fund
 spec:
   replicas: 2
   template:
@@ -52,6 +54,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: coherence-fund-scoring-worker
+  namespace: coherence-fund
 spec:
   replicas: 2
   template:
@@ -75,4 +78,3 @@ spec:
               --poll-seconds 1
               --lease-seconds 120
               --retry-base-seconds 5
-

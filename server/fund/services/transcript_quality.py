@@ -30,6 +30,7 @@ from typing import Dict, Iterable, Mapping, Optional, Tuple
 
 from coherence_engine.config import TranscriptQualityThresholds
 from coherence_engine.core.types import Transcript, TranscriptTurn
+from coherence_engine.server.fund.services import object_storage as _object_storage
 
 
 _FOUNDER_SPEAKER = "founder"
@@ -163,3 +164,83 @@ def evaluate_transcript(
         reason_codes=tuple(reasons),
         metrics=metrics,
     )
+
+
+# ---------------------------------------------------------------------------
+# Object-storage round-trip helpers
+# ---------------------------------------------------------------------------
+#
+# Transcripts are the largest single artifact in the pipeline (a 30-minute
+# founder interview can run ~30-60 KB of text plus diarization metadata; audio
+# transcoded transcripts can hit a few hundred KB). We persist them through
+# the configured ``object_storage`` backend rather than the database so the
+# scoring worker can stream large blobs (range reads) without hydrating the
+# whole document, and so the Next.js founder portal can fetch a signed URL
+# directly from Supabase without a server hop.
+
+def _serialize_transcript_for_storage(transcript: Transcript) -> bytes:
+    """Canonical JSON serialization of a Transcript for object storage."""
+    payload = {
+        "session_id": transcript.session_id,
+        "language": transcript.language,
+        "asr_model": transcript.asr_model,
+        "turns": [
+            {
+                "speaker": t.speaker,
+                "text": t.text,
+                "confidence": float(t.confidence),
+                "start_ms": int(getattr(t, "start_ms", 0) or 0),
+                "end_ms": int(getattr(t, "end_ms", 0) or 0),
+            }
+            for t in transcript.turns
+        ],
+    }
+    return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def store_transcript(transcript: Transcript, application_id: str) -> str:
+    """Persist ``transcript`` through object storage, return its canonical URI.
+
+    The returned URI is suitable for assignment to
+    :class:`~coherence_engine.server.fund.models.Application.transcript_uri`.
+    The caller is responsible for the DB write — this helper does not touch
+    SQLAlchemy.
+    """
+    data = _serialize_transcript_for_storage(transcript)
+    expected = _object_storage.sha256_hex(data)
+    result = _object_storage.put(
+        f"transcripts/{application_id}/{transcript.session_id}.json",
+        data,
+        content_type="application/json",
+    )
+    if result.sha256 != expected:
+        raise _object_storage.StorageHashMismatch(
+            f"transcript body hash drift: expected={expected} got={result.sha256}"
+        )
+    return result.uri
+
+
+def load_transcript_bytes(uri: str) -> bytes:
+    """Read raw transcript bytes from object storage. Range-friendly upstream."""
+    return _object_storage.get(uri)
+
+
+def load_transcript_text(uri: str) -> str:
+    """Convenience: load a transcript blob and return the joined founder text.
+
+    Used by the scoring worker when the application carries a ``transcript_uri``
+    but no inline ``transcript_text``. Intentionally tolerant of either the
+    serialization produced by :func:`store_transcript` or a plain-text payload.
+    """
+    raw = load_transcript_bytes(uri)
+    text = raw.decode("utf-8", errors="replace")
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return text
+    if not isinstance(parsed, dict):
+        return text
+    turns = parsed.get("turns") or []
+    if not isinstance(turns, list):
+        return text
+    return " ".join(str(t.get("text", "")) for t in turns if isinstance(t, dict))

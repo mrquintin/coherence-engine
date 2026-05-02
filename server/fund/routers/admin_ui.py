@@ -51,7 +51,6 @@ from coherence_engine.server.fund.database import SessionLocal, get_db
 from coherence_engine.server.fund.repositories.api_key_repository import (
     ApiKeyRepository,
 )
-from coherence_engine.server.fund.security import enforce_roles
 from coherence_engine.server.fund.services.api_key_service import ApiKeyService
 
 

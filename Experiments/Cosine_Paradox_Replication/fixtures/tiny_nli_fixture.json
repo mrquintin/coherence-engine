@@ -1,0 +1,33 @@
+{
+  "schema": "cosine-paradox-fixture-v1",
+  "comment": "Tiny seeded fixture used by the dry-run + the unit tests. Cosines are hand-picked so that entailment and contradiction overlap heavily (paradox confirmed) while neutral is clearly lower. n=8 per label is well below the production stopping_rule but the harness recognises the 'fixture' source and skips the stopping_rule on this path.",
+  "source": "fixture",
+  "model_id": "sentence-transformers/all-mpnet-base-v2",
+  "model_version": "1.0.0",
+  "rows": [
+    {"label": "entailment",    "cosine": 0.8501},
+    {"label": "entailment",    "cosine": 0.8200},
+    {"label": "entailment",    "cosine": 0.8800},
+    {"label": "entailment",    "cosine": 0.8400},
+    {"label": "entailment",    "cosine": 0.8600},
+    {"label": "entailment",    "cosine": 0.8300},
+    {"label": "entailment",    "cosine": 0.8700},
+    {"label": "entailment",    "cosine": 0.8550},
+    {"label": "contradiction", "cosine": 0.8390},
+    {"label": "contradiction", "cosine": 0.8610},
+    {"label": "contradiction", "cosine": 0.8290},
+    {"label": "contradiction", "cosine": 0.8520},
+    {"label": "contradiction", "cosine": 0.8720},
+    {"label": "contradiction", "cosine": 0.8210},
+    {"label": "contradiction", "cosine": 0.8480},
+    {"label": "contradiction", "cosine": 0.8330},
+    {"label": "neutral",       "cosine": 0.4500},
+    {"label": "neutral",       "cosine": 0.4800},
+    {"label": "neutral",       "cosine": 0.4200},
+    {"label": "neutral",       "cosine": 0.5000},
+    {"label": "neutral",       "cosine": 0.4700},
+    {"label": "neutral",       "cosine": 0.4400},
+    {"label": "neutral",       "cosine": 0.4900},
+    {"label": "neutral",       "cosine": 0.4600}
+  ]
+}

@@ -1,0 +1,92 @@
+name: Migrations CI Gate
+
+on:
+  pull_request:
+    paths:
+      - "alembic/versions/**"
+      - "server/fund/models.py"
+      - "deploy/scripts/migration_ci_gate.py"
+      - ".github/workflows/migrations.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reversibility:
+    name: alembic upgrade/downgrade/upgrade reversibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: coherence_ci
+          POSTGRES_PASSWORD: coherence_ci
+          POSTGRES_DB: coherence_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U coherence_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Default URL points at the ephemeral service container above. CI may
+      # override via the `MIGRATION_GATE_PG_URL` secret to point at a managed
+      # parity database — when set, the secret value wins.
+      DEFAULT_PG_URL: postgresql://coherence_ci:coherence_ci@localhost:5432/coherence_ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Postgres client (pg_dump) + Python deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          python -m pip install --upgrade pip
+          pip install -e ".[fund-api]"
+          pip install alembic SQLAlchemy psycopg2-binary
+
+      - name: Resolve MIGRATION_GATE_PG_URL
+        id: resolve_pg_url
+        env:
+          SECRET_PG_URL: ${{ secrets.MIGRATION_GATE_PG_URL }}
+        run: |
+          if [ -n "${SECRET_PG_URL}" ]; then
+            echo "pg_url=${SECRET_PG_URL}" >> "${GITHUB_OUTPUT}"
+            echo "source=secret" >> "${GITHUB_OUTPUT}"
+          else
+            echo "pg_url=${DEFAULT_PG_URL}" >> "${GITHUB_OUTPUT}"
+            echo "source=service-container" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Wait for Postgres readiness
+        env:
+          PGPASSWORD: coherence_ci
+        run: |
+          for _ in $(seq 1 30); do
+            if pg_isready -h localhost -p 5432 -U coherence_ci; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Postgres did not become ready in time" >&2
+          exit 1
+
+      - name: Run migration CI gate
+        env:
+          MIGRATION_GATE_PG_URL: ${{ steps.resolve_pg_url.outputs.pg_url }}
+        run: |
+          python deploy/scripts/migration_ci_gate.py --require-configured
+
+      - name: Re-run audit (errors must be empty)
+        run: |
+          python deploy/scripts/audit_migrations_postgres_parity.py

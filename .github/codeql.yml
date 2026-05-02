@@ -1,0 +1,37 @@
+# CodeQL configuration (Wave 17, prompt 65 of 70).
+#
+# Languages analyzed:
+#   - python
+#   - javascript
+#
+# Paths excluded from analysis: vendored bundles, build outputs, fixtures.
+# This file is referenced from the CodeQL workflow under
+# .github/workflows/codeql.yml (created when CodeQL is wired into the
+# branch-protection required-checks set).
+
+name: "CodeQL"
+
+languages:
+  - python
+  - javascript
+
+queries:
+  - uses: security-and-quality
+
+paths:
+  - server
+  - core
+  - domain
+  - coherence_engine
+  - apps/founder_portal/src
+  - apps/partner_dashboard/src
+  - apps/site/src
+
+paths-ignore:
+  - "**/node_modules"
+  - "**/.next"
+  - "**/dist"
+  - "**/build"
+  - "tests/fixtures/**"
+  - "Experiments/**"
+  - "deploy/chaos/scenarios/**"

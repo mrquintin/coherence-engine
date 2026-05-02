@@ -1,0 +1,16 @@
+---
+export interface Props {
+  citation?: string;
+  title: string;
+  authors: string[];
+  published: string;
+}
+const { citation, title, authors, published } = Astro.props;
+const year = published.slice(0, 4);
+const fallback = `${authors.join(', ')} (${year}). ${title}. Coherence Engine Research. ${Astro.url.toString()}`;
+const text = citation ?? fallback;
+---
+<section class="not-prose mt-10 rounded-md border border-ink/10 bg-ink/[0.02] p-4 text-sm">
+  <h2 class="font-semibold mb-2 text-base">Cite this paper</h2>
+  <pre class="whitespace-pre-wrap break-words font-mono text-xs">{text}</pre>
+</section>

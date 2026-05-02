@@ -13,7 +13,7 @@ if config.config_file_name is not None:
 try:
     from coherence_engine.server.fund.config import settings
     from coherence_engine.server.fund.database import Base
-    from coherence_engine.server.fund import models  # noqa: F401
+    from coherence_engine.server.fund import models
 except ImportError:
     from server.fund.config import settings  # type: ignore
     from server.fund.database import Base  # type: ignore

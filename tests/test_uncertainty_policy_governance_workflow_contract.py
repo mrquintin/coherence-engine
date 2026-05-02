@@ -16,9 +16,10 @@ def test_uncertainty_policy_governance_workflow_contract():
     assert "reusable-governance-attestation-check.yml" in text
     assert "baseline_verify" in text
     assert "secrets: inherit" in text
-    assert "environment: uncertainty-governance-baseline-verification" in text
+    assert "governance_environment_slug: uncertainty-governance-baseline-verification" in text
     reuse = root / ".github" / "workflows" / "reusable-governance-attestation-check.yml"
     rtext = reuse.read_text(encoding="utf-8")
+    assert "environment: ${{ inputs.governance_environment_slug }}" in rtext
     assert "verify_uncertainty_policy_baselines.py" in rtext
     assert "UNCERTAINTY_GOVERNANCE_POLICY_BASELINES_JSON" in rtext
     assert "reject-example-baseline-path" in rtext

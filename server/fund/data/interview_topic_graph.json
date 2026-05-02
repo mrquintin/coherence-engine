@@ -1,0 +1,93 @@
+{
+  "version": "1",
+  "duration_seconds_cap": 1800,
+  "confidence_threshold": 0.6,
+  "anti_gaming_threshold": 1,
+  "max_follow_ups_per_topic": 1,
+  "start": "problem",
+  "high_priority_topics": [
+    "problem",
+    "solution_mechanism",
+    "evidence",
+    "self_critique"
+  ],
+  "topics": {
+    "problem": {
+      "kind": "primary",
+      "priority": "high",
+      "prompt": "Tell us about the problem you are solving and who suffers from it most.",
+      "edges": {
+        "if_low_evidence": "problem_followup",
+        "default": "solution_mechanism"
+      }
+    },
+    "problem_followup": {
+      "kind": "follow_up",
+      "of": "problem",
+      "priority": "low",
+      "prompt": "Can you walk us through a concrete example of a customer hitting this problem?",
+      "edges": {
+        "default": "solution_mechanism"
+      }
+    },
+    "solution_mechanism": {
+      "kind": "primary",
+      "priority": "high",
+      "prompt": "How does your solution work — the mechanism, not just the outcome?",
+      "edges": {
+        "if_low_evidence": "solution_followup",
+        "default": "evidence"
+      }
+    },
+    "solution_followup": {
+      "kind": "follow_up",
+      "of": "solution_mechanism",
+      "priority": "low",
+      "prompt": "What is the single hardest technical step in your solution and how do you handle it?",
+      "edges": {
+        "default": "evidence"
+      }
+    },
+    "evidence": {
+      "kind": "primary",
+      "priority": "high",
+      "prompt": "What evidence — data, pilots, studies — supports that this solution works?",
+      "edges": {
+        "if_high_anti_gaming": "execution",
+        "if_low_evidence": "evidence_followup",
+        "default": "moat"
+      }
+    },
+    "evidence_followup": {
+      "kind": "follow_up",
+      "of": "evidence",
+      "priority": "low",
+      "prompt": "Share the most concrete pilot or experiment number you have today.",
+      "edges": {
+        "default": "moat"
+      }
+    },
+    "moat": {
+      "kind": "primary",
+      "priority": "medium",
+      "prompt": "What is the durable defensibility — the moat — that protects this business?",
+      "edges": {
+        "default": "execution"
+      }
+    },
+    "execution": {
+      "kind": "primary",
+      "priority": "medium",
+      "prompt": "What have you and the team actually shipped or delivered in the last quarter?",
+      "edges": {
+        "default": "self_critique"
+      }
+    },
+    "self_critique": {
+      "kind": "primary",
+      "priority": "high",
+      "prompt": "What is the strongest objection a sceptical investor would raise, and how would you respond?",
+      "edges": {}
+    }
+  }
+}

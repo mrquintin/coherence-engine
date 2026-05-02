@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from coherence_engine.core.types import (
     Proposition,
     ProvenanceSpan,
-    Relation,
     Transcript,
     TranscriptTurn,
 )

@@ -1,0 +1,28 @@
+{
+  "company_name": "anon_131bf756228faec6",
+  "country": "SG",
+  "deck_uri": "coh://local/historical-corpus/seeds/3799e693-561f-792c-8087-1cab7f14824f/deck.pdf",
+  "domain_primary": "consumer",
+  "eligibility": {
+    "consent_documented": true,
+    "date_window_ok": true,
+    "evidence_floor_ok": true,
+    "no_training_overlap_ok": true
+  },
+  "evidence_floor": {
+    "n_metrics_cited": 5,
+    "n_propositions": 14,
+    "n_sources_cited": 4
+  },
+  "memo_uri": "coh://local/historical-corpus/seeds/3799e693-561f-792c-8087-1cab7f14824f/memo.md",
+  "pitch_id": "3799e693-561f-792c-8087-1cab7f14824f",
+  "pitch_year": 2020,
+  "provenance": {
+    "consent_documented": true,
+    "ingested_at": "2026-04-25T00:00:00+00:00",
+    "ingestion_run_id": "ing_seed00000000seed",
+    "source": "synthetic"
+  },
+  "schema_version": "1",
+  "transcript_uri": "coh://local/historical-corpus/seeds/3799e693-561f-792c-8087-1cab7f14824f/transcript.txt"
+}

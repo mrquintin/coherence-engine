@@ -26,7 +26,7 @@ import os
 import pytest
 
 fastapi = pytest.importorskip("fastapi")
-from fastapi.testclient import TestClient  # noqa: E402
+from fastapi.testclient import TestClient
 
 
 # ---------------------------------------------------------------------------

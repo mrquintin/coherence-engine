@@ -1,0 +1,63 @@
+# Helm values block for the fund Arq worker.
+#
+# Drop this snippet into the umbrella chart's ``values.yaml`` (or extend
+# the existing ``coherence-fund`` subchart) to enable the Arq worker
+# alongside the polling worker. Polling stays the failsafe — both can
+# coexist; their work is reconciled at the database layer.
+
+arqWorker:
+  enabled: false           # flip to true to enable in the env's values overlay
+  image:
+    repository: coherence-engine
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  replicaCount: 2
+
+  env:
+    WORKER_BACKEND: arq
+    ARQ_QUEUE_PREFIX: coherence_fund
+    # REDIS_URL must come from a Kubernetes secret — never check the DSN
+    # into a chart values file.
+  envFrom:
+    - secretRef:
+        name: coherence-fund-redis
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 768Mi
+
+  # The worker drains in-flight jobs on SIGTERM up to job_timeout (900s).
+  # Pad terminationGracePeriodSeconds so K8s does not SIGKILL during drain.
+  terminationGracePeriodSeconds: 950
+
+  livenessProbe:
+    exec:
+      command:
+        - /bin/sh
+        - -c
+        - "pgrep -f 'coherence_engine.server.fund.workers.arq_worker' >/dev/null"
+    initialDelaySeconds: 10
+    periodSeconds: 30
+
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ---------------------------------------------------------------------------
+# Upstash Redis env example (referenced from the secret above).
+# ---------------------------------------------------------------------------
+#
+#   apiVersion: v1
+#   kind: Secret
+#   metadata:
+#     name: coherence-fund-redis
+#   type: Opaque
+#   stringData:
+#     # TLS endpoint, NOT the REST API. Arq speaks RESP-over-TLS only.
+#     REDIS_URL: rediss://default:<password>@<region>.upstash.io:6379

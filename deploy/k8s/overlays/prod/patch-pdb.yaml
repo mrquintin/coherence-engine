@@ -2,6 +2,7 @@ apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: coherence-fund-api
+  namespace: coherence-fund
 spec:
   minAvailable: 2
 ---
@@ -9,6 +10,7 @@ apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: coherence-fund-worker
+  namespace: coherence-fund
 spec:
   minAvailable: 1
 ---
@@ -16,6 +18,6 @@ apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: coherence-fund-scoring-worker
+  namespace: coherence-fund
 spec:
   minAvailable: 1
-

@@ -1,0 +1,106 @@
+# Pre-registration document for the Cosine Paradox replication study
+# (prompt 47, Wave 13). Frozen with respect to any subsequent report.
+# Bumping any value below requires a new ``version:`` plus a
+# ``justification:`` stanza explaining why the change was made *before*
+# re-looking at any new data. The runner refuses to emit a report when
+# the parsed document mismatches the schema declared here.
+#
+# This file is parsed by Experiments/Cosine_Paradox_Replication/
+# run_replication.py with a tiny stdlib parser; the on-disk shape is
+# restricted to scalars and one level of mapping nesting. PyYAML is
+# *not* a runtime dependency.
+
+version: "v1.0"
+study_name: "cosine-paradox-replication-snli-v1"
+study_kind: "independent_replication"
+
+dataset:
+  name: "SNLI 1.0 dev split"
+  url: "https://nlp.stanford.edu/projects/snli/snli_1.0.zip"
+  sha256: "e6f89f2b8f937e7128e93d127d6552305f56492e4c43a065edc3bda816432f9d"
+  filename_in_archive: "snli_1.0/snli_1.0_dev.jsonl"
+  expected_pair_count: 9842
+  fallback_dataset: "MultiNLI matched dev"
+  fallback_url: "https://cims.nyu.edu/~sbowman/multinli/multinli_1.0.zip"
+
+embedding_model:
+  id: "sentence-transformers/all-mpnet-base-v2"
+  version: "1.0.0"
+  source: "huggingface_hub"
+  output_dim: 768
+  rationale: >-
+    The headline Cosine Paradox claim was reported on this exact model.
+    Replicating on the same checkpoint isolates the effect from model
+    drift. We deliberately do not re-train or fine-tune.
+
+leakage_assumption:
+  text: >-
+    SNLI/MultiNLI may overlap with the all-mpnet-base-v2 pre-training
+    corpus. The published model card lists ~1B sentence pairs sampled
+    from Reddit, S2ORC, WikiAnswers, Stack Exchange, and others; SNLI
+    captions are not enumerated, but cannot be ruled out. We therefore
+    flag this study as a *replication on plausibly-overlapping data*
+    rather than a clean held-out test. A future strengthening step is
+    to re-run on a corpus published *after* the model snapshot date.
+  empirical_overlap_check: "not_performed"
+
+primary_hypothesis:
+  id: "H1"
+  statement: >-
+    In raw cosine-similarity space produced by all-mpnet-base-v2, the
+    distributions of entailment and contradiction premise/hypothesis
+    pairs are statistically indistinguishable — i.e., the magnitude of
+    the rank-biserial effect size is below 0.20 and the Mann-Whitney U
+    test does not reject H0 at alpha = 0.01.
+  test: "Mann-Whitney U + permutation test (two-sided)"
+  parameter_of_interest: "rank_biserial_effect_size(entailment, contradiction)"
+  alpha: 0.01
+  n_permutations: 10000
+  decision_rule: >-
+    Confirm the Cosine Paradox when |effect_size| < 0.20 OR p >= 0.01.
+    Refute (overturn) the Cosine Paradox when |effect_size| >= 0.20
+    AND p < 0.01.
+
+secondary_hypothesis:
+  id: "H2"
+  statement: >-
+    Neutral pairs are separable from both entailment and contradiction
+    in raw cosine space (sanity check that the embedder carries *some*
+    signal).
+  test: "Mann-Whitney U (neutral vs entailment, neutral vs contradiction)"
+  alpha: 0.05
+
+bootstrap:
+  iterations: 10000
+  resample_unit: "row"
+  rng: "deterministic_stdlib"
+  seed_field: "config.seed"
+  notes: >-
+    Bootstrap resamples are drawn with replacement using a stdlib
+    random.Random seeded from config.seed. Same seed + same cosines
+    file = byte-identical report bytes.
+
+random_seed: 47
+
+stopping_rule:
+  minimum_n_per_label: 200
+  on_violation: "raise INSUFFICIENT_SAMPLE; do not emit a report"
+  rationale: >-
+    Below 200 pairs per label the permutation test cannot reliably
+    resolve a small (|effect| ~ 0.1) effect from noise.
+
+negative_results_policy:
+  publish_when_paradox_confirmed: true
+  publish_when_paradox_refuted: true
+  notes: >-
+    The harness emits the same report shape regardless of which way
+    the test lands. A refutation of the original headline is itself
+    a publishable result and SHOULD be published.
+
+prohibited_actions:
+  - "tuning the embedder on the replication dataset"
+  - "post-hoc adjusting alpha or test statistic"
+  - "switching from rank_biserial to a different effect-size metric after seeing results"
+  - "discarding labels from the analysis"
+
+amendments: []

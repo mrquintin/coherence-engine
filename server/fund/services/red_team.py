@@ -38,9 +38,9 @@ Design notes and prohibitions (prompt 13):
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from coherence_engine.server.fund.services.decision_policy import (
     DECISION_POLICY_VERSION,
@@ -331,16 +331,16 @@ class _SyntheticApplication:
     """
 
     __slots__ = (
-        "id",
+        "compliance_status",
+        "domain_primary",
         "founder_id",
+        "id",
         "one_liner",
-        "requested_check_usd",
-        "use_of_funds_summary",
         "preferred_channel",
+        "requested_check_usd",
         "transcript_text",
         "transcript_uri",
-        "domain_primary",
-        "compliance_status",
+        "use_of_funds_summary",
     )
 
     def __init__(self, fixture: Mapping[str, Any]) -> None:

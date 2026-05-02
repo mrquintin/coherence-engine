@@ -16,12 +16,13 @@ decision predicate.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Dict, Iterable, Optional
+from typing import Dict, Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from coherence_engine.server.fund import models
+from coherence_engine.server.fund.repositories import resolve_read_session
 
 
 _KNOWN_REGIMES = frozenset({"normal", "stress", "recovery"})
@@ -37,16 +38,36 @@ def _normalize_regime(raw: Optional[str]) -> str:
 
 
 class PortfolioRepository:
-    """Query + append-only writer for ``portfolio_state`` and ``positions``."""
+    """Query + append-only writer for ``portfolio_state`` and ``positions``.
 
-    def __init__(self, db: Session):
+    Reads honor a caller-supplied ``session=`` override and an optional
+    ``read_only=True`` routing flag. With ``read_only=True`` and no
+    explicit session, a fresh session is opened against the read replica
+    (or the primary, if no replica is configured) for the call's
+    duration. Writes always use the constructor's primary session.
+    """
+
+    def __init__(self, db: Optional[Session] = None):
         self.db = db
+
+    def _require_primary(self) -> Session:
+        if self.db is None:
+            raise RuntimeError(
+                "PortfolioRepository write methods require a primary Session "
+                "passed to the constructor"
+            )
+        return self.db
 
     # ------------------------------------------------------------------
     # Read side
     # ------------------------------------------------------------------
 
-    def latest_state(self) -> Optional[models.PortfolioState]:
+    def latest_state(
+        self,
+        *,
+        session: Optional[Session] = None,
+        read_only: bool = False,
+    ) -> Optional[models.PortfolioState]:
         """Return the most recent portfolio snapshot, or ``None`` if empty."""
         stmt = (
             select(models.PortfolioState)
@@ -56,9 +77,15 @@ class PortfolioRepository:
             )
             .limit(1)
         )
-        return self.db.execute(stmt).scalar_one_or_none()
+        with resolve_read_session(session, self.db, read_only=read_only) as db:
+            return db.execute(stmt).scalar_one_or_none()
 
-    def active_positions_by_domain(self) -> Dict[str, float]:
+    def active_positions_by_domain(
+        self,
+        *,
+        session: Optional[Session] = None,
+        read_only: bool = False,
+    ) -> Dict[str, float]:
         """Return ``{domain: total_active_invested_usd}``.
 
         Aggregates ``invested_usd`` over rows with ``status == "active"``.
@@ -73,15 +100,22 @@ class PortfolioRepository:
             .where(models.Position.status == "active")
             .group_by(models.Position.domain)
         )
-        rows = self.db.execute(stmt).all()
+        with resolve_read_session(session, self.db, read_only=read_only) as db:
+            rows = db.execute(stmt).all()
         return {str(domain): float(total or 0.0) for domain, total in sorted(rows)}
 
-    def active_positions_total(self) -> float:
+    def active_positions_total(
+        self,
+        *,
+        session: Optional[Session] = None,
+        read_only: bool = False,
+    ) -> float:
         stmt = (
             select(func.coalesce(func.sum(models.Position.invested_usd), 0.0))
             .where(models.Position.status == "active")
         )
-        return float(self.db.execute(stmt).scalar_one() or 0.0)
+        with resolve_read_session(session, self.db, read_only=read_only) as db:
+            return float(db.execute(stmt).scalar_one() or 0.0)
 
     # ------------------------------------------------------------------
     # Append-only write side
@@ -102,7 +136,8 @@ class PortfolioRepository:
         """
         if usd < 0.0:
             raise ValueError(f"liquidity_reserve_usd must be >= 0, got {usd}")
-        prev = self.latest_state()
+        db = self._require_primary()
+        prev = self.latest_state(session=db)
         row = models.PortfolioState(
             as_of=_utc_now(),
             fund_nav_usd=float(prev.fund_nav_usd) if prev is not None else 0.0,
@@ -111,8 +146,8 @@ class PortfolioRepository:
             regime=str(prev.regime) if prev is not None else "normal",
             note=note,
         )
-        self.db.add(row)
-        self.db.flush()
+        db.add(row)
+        db.flush()
         return row
 
     def record_state(
@@ -139,8 +174,9 @@ class PortfolioRepository:
             regime=_normalize_regime(regime),
             note=note,
         )
-        self.db.add(row)
-        self.db.flush()
+        db = self._require_primary()
+        db.add(row)
+        db.flush()
         return row
 
     def record_position(
@@ -168,16 +204,22 @@ class PortfolioRepository:
             invested_usd=float(invested_usd),
             status=str(status),
         )
-        self.db.add(row)
-        self.db.flush()
+        db = self._require_primary()
+        db.add(row)
+        db.flush()
         return row
 
     # ------------------------------------------------------------------
     # Convenience
     # ------------------------------------------------------------------
 
-    def latest_state_as_dict(self) -> Optional[dict]:
-        row = self.latest_state()
+    def latest_state_as_dict(
+        self,
+        *,
+        session: Optional[Session] = None,
+        read_only: bool = False,
+    ) -> Optional[dict]:
+        row = self.latest_state(session=session, read_only=read_only)
         if row is None:
             return None
         return {
@@ -190,11 +232,16 @@ class PortfolioRepository:
             "note": row.note,
         }
 
-    def domain_concentration_by_nav(self) -> Dict[str, float]:
+    def domain_concentration_by_nav(
+        self,
+        *,
+        session: Optional[Session] = None,
+        read_only: bool = False,
+    ) -> Dict[str, float]:
         """Return ``{domain: invested_usd / fund_nav_usd}`` for active positions."""
-        state = self.latest_state()
+        state = self.latest_state(session=session, read_only=read_only)
         nav = float(state.fund_nav_usd) if state is not None else 0.0
-        totals = self.active_positions_by_domain()
+        totals = self.active_positions_by_domain(session=session, read_only=read_only)
         if nav <= 0.0:
             return {k: 0.0 for k in totals}
         return {k: v / nav for k, v in totals.items()}

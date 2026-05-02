@@ -1,0 +1,39 @@
+---
+// /results/latest — 301 redirect to the most-recently-published study.
+// Falls back to /results when no study has been rendered yet.
+type StudyFrontmatter = {
+  published_at: string;
+  version: string;
+};
+
+const modules = import.meta.glob('../../content/results/*.mdx', { eager: true });
+
+function slugFromPath(path: string): string {
+  const m = path.match(/([^/]+)\.mdx$/);
+  return m ? m[1] : path;
+}
+
+const studies = Object.entries(modules)
+  .map(([path, mod]) => {
+    const fm = (mod as { frontmatter: StudyFrontmatter }).frontmatter;
+    return { slug: slugFromPath(path), frontmatter: fm };
+  })
+  .sort((a, b) => Date.parse(b.frontmatter.published_at) - Date.parse(a.frontmatter.published_at));
+
+const target = studies.length > 0 ? `/results/${studies[0].slug}/` : '/results/';
+---
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Latest validation result — Coherence Engine</title>
+    <meta http-equiv="refresh" content={`0; url=${target}`} />
+    <link rel="canonical" href={target} />
+    <meta name="robots" content="noindex" />
+  </head>
+  <body>
+    <p>
+      Redirecting to the latest validation result at <a href={target}>{target}</a>.
+    </p>
+  </body>
+</html>

@@ -32,7 +32,7 @@ import json
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from coherence_engine.server.fund.services.decision_policy import (
     DECISION_POLICY_VERSION,

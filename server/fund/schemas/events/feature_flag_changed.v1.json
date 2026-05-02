@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coherence-engine/events/decision_policy_flag_changed/v1",
+  "title": "DecisionPolicyFlagChangedV1",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_name",
+    "schema_version",
+    "occurred_at",
+    "key",
+    "flag_type",
+    "restricted",
+    "old_value",
+    "new_value",
+    "actor",
+    "source"
+  ],
+  "properties": {
+    "event_id": {"type": "string", "format": "uuid"},
+    "event_name": {"type": "string", "const": "decision_policy_flag_changed"},
+    "schema_version": {"type": "integer", "const": 1},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "key": {"type": "string", "minLength": 1},
+    "flag_type": {
+      "type": "string",
+      "enum": ["boolean", "string-enum", "int-percent"]
+    },
+    "restricted": {"type": "boolean", "const": true},
+    "old_value": {
+      "type": ["boolean", "string", "integer", "null"]
+    },
+    "new_value": {
+      "type": ["boolean", "string", "integer"]
+    },
+    "actor": {"type": "string", "minLength": 1},
+    "source": {
+      "type": "string",
+      "enum": ["yaml", "launchdarkly", "posthog", "cli"]
+    },
+    "reason": {"type": "string"},
+    "audit_id": {"type": "string", "minLength": 1}
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "event_id": "55555555-5555-4555-8555-555555555555",
+      "event_name": "decision_policy_flag_changed",
+      "schema_version": 1,
+      "occurred_at": "2026-04-25T17:30:00Z",
+      "key": "anti_gaming.enabled",
+      "flag_type": "boolean",
+      "restricted": true,
+      "old_value": true,
+      "new_value": false,
+      "actor": "ops@coherence-engine",
+      "source": "cli",
+      "reason": "investigating false-positive incident INC-204",
+      "audit_id": "ffaud_01HXXX"
+    }
+  ]
+}

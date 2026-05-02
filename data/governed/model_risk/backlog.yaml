@@ -1,0 +1,56 @@
+# Coherence Engine — Model Risk Management backlog (prompt 60).
+#
+# This file is the *source of truth* for the qualitative content of
+# the quarterly MRM report: the stated model purpose, its acknowledged
+# limitations, the running list of known weaknesses, and the
+# remediation backlog. The renderer reads it directly; do not
+# duplicate this content elsewhere.
+
+model_purpose: "The Coherence Engine measures the internal logical coherence of founder pitch material on a 0-1 scale and feeds the score into the pre-seed underwriting decision policy as one signal among several. It is a screening aid, not a sole decision authority."
+
+model_limitations:
+  - description: "Coherence is a property of the *text*, not of the founder, market, or business. A pitch can be coherent and still describe a non-viable business."
+  - description: "The historical-pitch corpus skews toward US English and 2010-2024 vintages; performance on non-English pitches is not characterized."
+  - description: "Realized 5-year survival labels are right-censored for cohorts younger than five years; recent vintages contribute less power to the validation study."
+  - description: "Anti-gaming heuristics are adversarial and decay; novel adversarial strategies may evade detection until a manual audit catches them."
+  - description: "The model does not reason about regulatory fit, capital structure, or team composition; those gates are owned by separate decision-policy stages."
+
+known_weaknesses:
+  - item_id: KW-001
+    title: "Domain-coverage thinness for biotech pitches"
+    severity: medium
+    status: open
+    owner: research
+    target_quarter: 2026Q3
+  - item_id: KW-002
+    title: "Calibration drift in healthtech sub-domain (Q-on-Q AUC -0.04)"
+    severity: high
+    status: in_progress
+    owner: research
+    target_quarter: 2026Q2
+  - item_id: KW-003
+    title: "Embedding-layer dependency on third-party model checkpoint"
+    severity: medium
+    status: accepted
+    owner: platform
+    target_quarter: 2027Q1
+
+remediation_backlog:
+  - item_id: RB-001
+    title: "Backfill historical-pitch corpus with 200 biotech pitches (vintage 2018-2022)"
+    severity: medium
+    status: in_progress
+    owner: research
+    target_quarter: 2026Q3
+  - item_id: RB-002
+    title: "Re-fit calibration parameters per sub-domain when N >= 200"
+    severity: high
+    status: open
+    owner: research
+    target_quarter: 2026Q2
+  - item_id: RB-003
+    title: "Add a fallback embedding source so the engine degrades gracefully on checkpoint outage"
+    severity: medium
+    status: open
+    owner: platform
+    target_quarter: 2026Q4

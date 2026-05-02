@@ -1,4 +1,3 @@
-import json
 from coherence_engine.core.types import CoherenceResult
 from coherence_engine.core.explanation import ExplanationGenerator
 

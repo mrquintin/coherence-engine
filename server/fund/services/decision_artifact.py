@@ -26,6 +26,7 @@ from coherence_engine.server.fund import models
 from coherence_engine.server.fund.services.decision_policy import (
     DECISION_POLICY_VERSION,
 )
+from coherence_engine.server.fund.services import object_storage as _object_storage
 
 
 _LOG = logging.getLogger(__name__)
@@ -340,11 +341,21 @@ def persist_decision_artifact(
     row (the existing :class:`~coherence_engine.server.fund.models.ArgumentArtifact`
     table is reused as the generic artifact store; this row carries
     ``kind="decision_artifact"`` and the canonical JSON in ``payload_json``).
+
+    Side effect: the same canonical bytes are also written through the
+    configured :mod:`object_storage` backend at the deterministic key
+    ``decision_artifacts/<application_id>/<artifact_id>.json`` so that
+    downstream consumers (auditor portal, signed-URL handouts) can read the
+    body without round-tripping through Postgres. The DB copy remains the
+    authoritative store; storage write failures are logged but do not abort
+    the persist (the workflow has retry semantics for transient blob errors).
     """
     validate_artifact(artifact_dict)
-    payload_json = _canonical_dumps(artifact_dict)
+    payload_bytes = canonical_artifact_bytes(artifact_dict)
+    payload_json = payload_bytes.decode("utf-8")
+    artifact_id = str(artifact_dict["artifact_id"])
     rec = models.ArgumentArtifact(
-        id=str(artifact_dict["artifact_id"]),
+        id=artifact_id,
         application_id=str(app_id),
         scoring_job_id=str(scoring_job_id or ""),
         propositions_json="[]",
@@ -354,4 +365,29 @@ def persist_decision_artifact(
     )
     session.add(rec)
     session.flush()
+
+    # Write the canonical bytes through object storage. The body is content-
+    # addressable: the SHA-256 returned by ``put`` must match what we computed
+    # from the canonical dict, otherwise the backend corrupted the upload.
+    try:
+        expected = _sha256_hex(payload_json)
+        result = _object_storage.put(
+            f"decision_artifacts/{app_id}/{artifact_id}.json",
+            payload_bytes,
+            content_type="application/json",
+        )
+        if result.sha256 != expected:
+            raise _object_storage.StorageHashMismatch(
+                f"decision_artifact body hash drift: expected={expected} "
+                f"got={result.sha256} uri={result.uri}"
+            )
+    except _object_storage.StorageHashMismatch:
+        raise
+    except Exception:
+        _LOG.exception(
+            "decision_artifact storage upload failed application_id=%s artifact_id=%s",
+            app_id,
+            artifact_id,
+        )
+
     return rec

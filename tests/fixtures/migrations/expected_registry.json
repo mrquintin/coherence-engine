@@ -1,0 +1,61 @@
+{
+  "schema_version": "migration-registry-v1",
+  "audited_at": "2026-01-01T00:00:00+00:00",
+  "revisions": [
+    {
+      "revision": "20260101_000001",
+      "file": "tests/fixtures/migrations/20260101_000001_clean.py",
+      "postgres_compatible": true,
+      "sqlite_compatible": true,
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "revision": "20260101_000002",
+      "file": "tests/fixtures/migrations/20260101_000002_alter_default_none.py",
+      "postgres_compatible": true,
+      "sqlite_compatible": false,
+      "warnings": [],
+      "errors": [
+        {
+          "code": "alter_column_server_default_none_sqlite",
+          "message": "op.alter_column(..., server_default=None) is not valid SQLite syntax. Wrap in a dialect guard or split into a Postgres-only branch.",
+          "lineno": 20
+        }
+      ]
+    },
+    {
+      "revision": "20260101_000003",
+      "file": "tests/fixtures/migrations/20260101_000003_naked_boolean.py",
+      "postgres_compatible": true,
+      "sqlite_compatible": true,
+      "warnings": [
+        {
+          "code": "boolean_no_server_default",
+          "message": "sa.Boolean column 'active' is NOT NULL with no server_default — Postgres ALTER TABLE ADD COLUMN against a populated table will fail.",
+          "lineno": 19
+        }
+      ],
+      "errors": []
+    },
+    {
+      "revision": "20260101_000004",
+      "file": "tests/fixtures/migrations/20260101_000004_batch_alter.py",
+      "postgres_compatible": true,
+      "sqlite_compatible": true,
+      "warnings": [
+        {
+          "code": "sqlite_only_pattern_batch_alter_table",
+          "message": "op.batch_alter_table is required for SQLite but redundant on Postgres. Recorded for prompt 24 — not a defect.",
+          "lineno": 16
+        },
+        {
+          "code": "sqlite_only_pattern_batch_alter_table",
+          "message": "op.batch_alter_table is required for SQLite but redundant on Postgres. Recorded for prompt 24 — not a defect.",
+          "lineno": 21
+        }
+      ],
+      "errors": []
+    }
+  ]
+}

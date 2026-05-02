@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 
 from coherence_engine.core.parser import parse_transcript
 from coherence_engine.core.scorer import CoherenceScorer

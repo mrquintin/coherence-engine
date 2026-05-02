@@ -158,3 +158,90 @@ class EventPublisher:
         self.db.add(rec)
         self.db.flush()
         return {"event_id": event_id}
+
+    def publish_decision_policy_flag_changed(
+        self,
+        audit_row: Dict[str, object],
+        *,
+        producer: str = "feature_flags",
+        trace_id: Optional[str] = None,
+    ) -> Dict[str, str]:
+        """Persist a ``decision_policy_flag_changed.v1`` event to the outbox.
+
+        Used by :class:`FeatureFlags.set_restricted` when a DB-backed
+        publisher is available. Validates the payload against
+        ``server/fund/schemas/events/feature_flag_changed.v1.json`` (when
+        ``jsonschema`` is installed) before writing the outbox row.
+        """
+        for required in ("audit_id", "key", "flag_type", "old_value", "new_value", "actor"):
+            if required not in audit_row:
+                raise ValueError(f"missing_field_in_audit_row:{required}")
+        payload: Dict[str, object] = {
+            "key": audit_row["key"],
+            "flag_type": audit_row["flag_type"],
+            "restricted": True,
+            "old_value": audit_row["old_value"],
+            "new_value": audit_row["new_value"],
+            "actor": audit_row["actor"],
+            "source": str(audit_row.get("source", "cli")),
+            "audit_id": str(audit_row["audit_id"]),
+        }
+        reason = audit_row.get("reason")
+        if reason:
+            payload["reason"] = str(reason)
+        self._validate_external_schema("decision_policy_flag_changed", payload)
+        return self.publish(
+            event_type="decision_policy_flag_changed",
+            producer=producer,
+            trace_id=trace_id or str(uuid.uuid4()),
+            idempotency_key=str(audit_row["audit_id"]),
+            payload=payload,
+        )
+
+    def _validate_external_schema(
+        self,
+        event_name: str,
+        payload: Dict[str, object],
+    ) -> None:
+        """Validate ``payload`` against a schema not registered in SUPPORTED_EVENTS.
+
+        Allows new event types whose schema lives next to the others
+        without requiring a same-day edit to ``event_schemas.py``. The
+        call is best-effort: if ``jsonschema`` is missing or the schema
+        file is absent, validation is skipped (the same fallback the
+        registered events use).
+        """
+        try:
+            from jsonschema import Draft202012Validator  # type: ignore
+        except ImportError:  # pragma: no cover - falls back like event_schemas
+            return
+        from pathlib import Path as _Path
+        schema_path = (
+            _Path(__file__).resolve().parent.parent
+            / "schemas"
+            / "events"
+            / f"{event_name}.v1.json"
+        )
+        if not schema_path.exists():
+            return
+        with schema_path.open("r", encoding="utf-8") as fh:
+            schema = json.load(fh)
+        envelope = self._build_event_object(
+            event_id=str(uuid.uuid4()),
+            event_name=event_name,
+            occurred_at=_utc_now(),
+            payload=payload,
+        )
+        errors = sorted(
+            Draft202012Validator(schema).iter_errors(envelope),
+            key=lambda e: list(e.absolute_path),
+        )
+        if errors and self.strict_events:
+            first = errors[0]
+            path = ".".join(str(p) for p in first.absolute_path) or "<root>"
+            from coherence_engine.server.fund.services.event_schemas import (
+                EventValidationError,
+            )
+            raise EventValidationError(
+                f"{event_name} v1 payload invalid at {path}: {first.message}"
+            )

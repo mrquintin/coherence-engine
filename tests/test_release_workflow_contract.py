@@ -9,6 +9,9 @@ def test_release_workflow_oncall_gate_contract():
     root = Path(__file__).resolve().parent.parent
     wf = root / ".github" / "workflows" / "release.yml"
     text = wf.read_text(encoding="utf-8")
+    oncall_gate = text.split("\n  preflight_gate:", 1)[0].split(
+        "  oncall_release_gate:", 1
+    )[1]
     assert "oncall_release_gate:" in text
     assert "name: On-call policy & drill gate" in text
     assert "Resolve private on-call route policy" in text
@@ -52,5 +55,5 @@ def test_release_workflow_oncall_gate_contract():
     assert "Upload on-call evidence gate decision (always)" in text
     assert "oncall_evidence_gate_decision" in text
     # No scheduled-workflow artifact coupling for this gate
-    assert "actions/download-artifact" not in text
-    assert "workflow_run:" not in text
+    assert "actions/download-artifact" not in oncall_gate
+    assert "workflow_run:" not in oncall_gate

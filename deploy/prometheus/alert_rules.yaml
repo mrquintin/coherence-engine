@@ -1,0 +1,304 @@
+# Coherence Fund — SLO burn-rate alerts.
+#
+# Wave 16, prompt 63/70. Multi-window / multi-burn-rate alerts per the
+# Google SRE workbook (chapter 5, "Alerting on SLOs"). Three burn-rate
+# pairs per ratio-based SLO + one freshness alert. Severity rules:
+#
+#   severity: critical → page on-call (fast burn).
+#   severity: warning  → ticket / next-business-day (slow burn).
+#
+# Never page on slow-burn alerts; the whole point of multi-window
+# multi-burn-rate is that slow burns get tickets.
+#
+# Joins recording rules from deploy/prometheus/recording_rules.yaml.
+# SLO numbers: docs/ops/slos.md.
+#
+# Validate locally:
+#   promtool check rules deploy/prometheus/alert_rules.yaml
+
+groups:
+  - name: coherence_fund_slo_burn_rate_alerts
+    interval: 30s
+    rules:
+      # ----------------------------------------------------------------------
+      # SLO_avail — target 99.5%/30d  →  (1 - target) = 0.005
+      # ----------------------------------------------------------------------
+      - alert: CoherenceFundAvailabilityFastBurn
+        expr: |
+          coherence_fund:slo_avail:error_ratio:1h  > (14.4 * 0.005)
+          and
+          coherence_fund:slo_avail:error_ratio:5m  > (14.4 * 0.005)
+        for: 2m
+        labels:
+          severity: critical
+          slo: SLO_avail
+          burn_rate: "14.4"
+          long_window: 1h
+          short_window: 5m
+          team: platform
+          service: coherence-fund
+        annotations:
+          summary: "SLO_avail fast-burn (14.4x): /api/v1/applications availability"
+          description: >
+            Availability error ratio is consuming the 30d error budget at
+            14.4x for both 1h and 5m windows; ~2% of the monthly budget
+            burns in 1h at this rate. PAGE on-call.
+            Runbook: docs/ops/slos.md
+          runbook: docs/ops/slos.md
+
+      - alert: CoherenceFundAvailabilityMediumBurn
+        expr: |
+          coherence_fund:slo_avail:error_ratio:6h   > (6 * 0.005)
+          and
+          coherence_fund:slo_avail:error_ratio:30m  > (6 * 0.005)
+        for: 5m
+        labels:
+          severity: critical
+          slo: SLO_avail
+          burn_rate: "6"
+          long_window: 6h
+          short_window: 30m
+          team: platform
+          service: coherence-fund
+        annotations:
+          summary: "SLO_avail medium-burn (6x): /api/v1/applications availability"
+          description: >
+            Availability error ratio is burning at 6x over a 6h window
+            with a 30m corroborating window; ~5% of monthly budget burns
+            in 6h at this rate. PAGE on-call.
+          runbook: docs/ops/slos.md
+
+      - alert: CoherenceFundAvailabilitySlowBurn
+        expr: |
+          coherence_fund:slo_avail:error_ratio:24h  > (3 * 0.005)
+          and
+          coherence_fund:slo_avail:error_ratio:2h   > (3 * 0.005)
+        for: 15m
+        labels:
+          severity: warning
+          slo: SLO_avail
+          burn_rate: "3"
+          long_window: 24h
+          short_window: 2h
+          team: platform
+          service: coherence-fund
+        annotations:
+          summary: "SLO_avail slow-burn (3x): availability budget draining"
+          description: >
+            Availability error ratio above 3x burn for 24h with 2h
+            corroboration; ~10% of monthly budget burns in 24h at this
+            rate. TICKET — do not page.
+          runbook: docs/ops/slos.md
+
+      - alert: CoherenceFundAvailabilityVerySlowBurn
+        expr: |
+          coherence_fund:slo_avail:error_ratio:72h  > (1 * 0.005)
+          and
+          coherence_fund:slo_avail:error_ratio:6h   > (1 * 0.005)
+        for: 1h
+        labels:
+          severity: warning
+          slo: SLO_avail
+          burn_rate: "1"
+          long_window: 72h
+          short_window: 6h
+          team: platform
+          service: coherence-fund
+        annotations:
+          summary: "SLO_avail very-slow burn (1x): steady error-budget drain"
+          description: >
+            Availability error ratio above the long-term sustainable
+            burn rate for 72h with 6h corroboration. TICKET — investigate
+            during business hours.
+          runbook: docs/ops/slos.md
+
+      # ----------------------------------------------------------------------
+      # SLO_latency — target P95 ≤ 30s, treated as 5% bad budget.
+      # ----------------------------------------------------------------------
+      - alert: CoherenceFundLatencyFastBurn
+        expr: |
+          coherence_fund:slo_latency:error_ratio:1h > (14.4 * 0.05)
+          and
+          coherence_fund:slo_latency:error_ratio:5m > (14.4 * 0.05)
+        for: 2m
+        labels:
+          severity: critical
+          slo: SLO_latency
+          burn_rate: "14.4"
+          long_window: 1h
+          short_window: 5m
+          team: platform
+          service: coherence-fund
+        annotations:
+          summary: "SLO_latency fast-burn (14.4x): pipeline P95 > 30s"
+          description: >
+            P95-violating fraction of pipeline runs is burning the 30d
+            latency budget at 14.4x. PAGE on-call.
+          runbook: docs/ops/slos.md
+
+      - alert: CoherenceFundLatencyMediumBurn
+        expr: |
+          coherence_fund:slo_latency:error_ratio:6h  > (6 * 0.05)
+          and
+          coherence_fund:slo_latency:error_ratio:30m > (6 * 0.05)
+        for: 5m
+        labels:
+          severity: critical
+          slo: SLO_latency
+          burn_rate: "6"
+          long_window: 6h
+          short_window: 30m
+          team: platform
+          service: coherence-fund
+        annotations:
+          summary: "SLO_latency medium-burn (6x): pipeline P95 trending late"
+          description: >
+            Latency-bad fraction above 6x burn for 6h with 30m corroboration.
+            PAGE on-call.
+          runbook: docs/ops/slos.md
+
+      - alert: CoherenceFundLatencySlowBurn
+        expr: |
+          coherence_fund:slo_latency:error_ratio:24h > (3 * 0.05)
+          and
+          coherence_fund:slo_latency:error_ratio:2h  > (3 * 0.05)
+        for: 15m
+        labels:
+          severity: warning
+          slo: SLO_latency
+          burn_rate: "3"
+          long_window: 24h
+          short_window: 2h
+          team: platform
+          service: coherence-fund
+        annotations:
+          summary: "SLO_latency slow-burn (3x): latency budget draining"
+          description: >
+            Latency-bad fraction above 3x burn for 24h. TICKET — do not page.
+          runbook: docs/ops/slos.md
+
+      - alert: CoherenceFundLatencyVerySlowBurn
+        expr: |
+          coherence_fund:slo_latency:error_ratio:72h > (1 * 0.05)
+          and
+          coherence_fund:slo_latency:error_ratio:6h  > (1 * 0.05)
+        for: 1h
+        labels:
+          severity: warning
+          slo: SLO_latency
+          burn_rate: "1"
+          long_window: 72h
+          short_window: 6h
+          team: platform
+          service: coherence-fund
+        annotations:
+          summary: "SLO_latency very-slow burn (1x): steady latency drain"
+          description: >
+            Latency-bad fraction above sustainable burn for 72h. TICKET.
+          runbook: docs/ops/slos.md
+
+      # ----------------------------------------------------------------------
+      # SLO_scoring_success — target 99%/30d → (1 - target) = 0.01
+      # ----------------------------------------------------------------------
+      - alert: CoherenceFundScoringFastBurn
+        expr: |
+          coherence_fund:slo_scoring:error_ratio:1h > (14.4 * 0.01)
+          and
+          coherence_fund:slo_scoring:error_ratio:5m > (14.4 * 0.01)
+        for: 2m
+        labels:
+          severity: critical
+          slo: SLO_scoring_success
+          burn_rate: "14.4"
+          long_window: 1h
+          short_window: 5m
+          team: platform
+          service: coherence-fund
+        annotations:
+          summary: "SLO_scoring fast-burn (14.4x): scoring failures spiking"
+          description: >
+            Scoring stage failure ratio burning the 30d budget at 14.4x.
+            PAGE on-call.
+          runbook: docs/ops/slos.md
+
+      - alert: CoherenceFundScoringMediumBurn
+        expr: |
+          coherence_fund:slo_scoring:error_ratio:6h  > (6 * 0.01)
+          and
+          coherence_fund:slo_scoring:error_ratio:30m > (6 * 0.01)
+        for: 5m
+        labels:
+          severity: critical
+          slo: SLO_scoring_success
+          burn_rate: "6"
+          long_window: 6h
+          short_window: 30m
+          team: platform
+          service: coherence-fund
+        annotations:
+          summary: "SLO_scoring medium-burn (6x): scoring failures elevated"
+          description: >
+            Scoring stage failure ratio above 6x burn for 6h with 30m
+            corroboration. PAGE on-call.
+          runbook: docs/ops/slos.md
+
+      - alert: CoherenceFundScoringSlowBurn
+        expr: |
+          coherence_fund:slo_scoring:error_ratio:24h > (3 * 0.01)
+          and
+          coherence_fund:slo_scoring:error_ratio:2h  > (3 * 0.01)
+        for: 15m
+        labels:
+          severity: warning
+          slo: SLO_scoring_success
+          burn_rate: "3"
+          long_window: 24h
+          short_window: 2h
+          team: platform
+          service: coherence-fund
+        annotations:
+          summary: "SLO_scoring slow-burn (3x): scoring budget draining"
+          description: >
+            Scoring failure ratio above 3x burn for 24h. TICKET.
+          runbook: docs/ops/slos.md
+
+      - alert: CoherenceFundScoringVerySlowBurn
+        expr: |
+          coherence_fund:slo_scoring:error_ratio:72h > (1 * 0.01)
+          and
+          coherence_fund:slo_scoring:error_ratio:6h  > (1 * 0.01)
+        for: 1h
+        labels:
+          severity: warning
+          slo: SLO_scoring_success
+          burn_rate: "1"
+          long_window: 72h
+          short_window: 6h
+          team: platform
+          service: coherence-fund
+        annotations:
+          summary: "SLO_scoring very-slow burn (1x): steady drain"
+          description: >
+            Scoring failure ratio above sustainable burn for 72h. TICKET.
+          runbook: docs/ops/slos.md
+
+  # --------------------------------------------------------------------------
+  # SLO_calibration_freshness — single freshness alert (event-based).
+  # --------------------------------------------------------------------------
+  - name: coherence_fund_slo_calibration_alerts
+    interval: 1m
+    rules:
+      - alert: CoherenceFundCalibrationStale
+        expr: coherence_fund:slo_calibration:age_seconds > 86400
+        for: 30m
+        labels:
+          severity: warning
+          slo: SLO_calibration_freshness
+          team: platform
+          service: coherence-fund
+        annotations:
+          summary: "SLO_calibration_freshness: drift report > 24h old"
+          description: >
+            Calibration drift report age exceeds 24h for 30m (debounce).
+            TICKET — investigate the calibration regenerator job.
+          runbook: docs/ops/slos.md

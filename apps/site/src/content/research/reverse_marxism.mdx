@@ -1,0 +1,57 @@
+---
+title: "Reverse Marxism: Reflection and Recovery"
+summary: "An ideological structure flipped across its principal contested axis should, in theory, recover its rival. We test the recovery property on Marx's Communist Manifesto and report what holds and what does not."
+authors:
+  - "Coherence Engine Research"
+published: "2026-03-08"
+status: "hypothesis"
+tags:
+  - "ideology"
+  - "reflection"
+  - "recovery"
+  - "Marx"
+citation: "Coherence Engine Research (2026). Reverse Marxism: Reflection and Recovery. Coherence Engine Working Paper CE-2026-03."
+---
+
+## The hypothesis
+
+If an analytic framework is organised around a single principal axis (Marx's framework is organised around *class*), then reflecting every sentence of the framework across the hyperplane orthogonal to that axis should produce a structurally coherent rival framework.
+
+Concretely: take Marx's claim that "the bourgeoisie extracts surplus value from the proletariat," reflect the embedding across the class axis, decode the nearest sentence in a reference corpus. The hypothesis says the decoded sentence should articulate a coherent counter-claim with the same structural depth, not a strawman negation.
+
+This is the **recovery** test: does reflection plus nearest-neighbour decoding recover an internally coherent rival ideology?
+
+## Method
+
+1. Embed 50 high-density sentences from the Communist Manifesto using `all-mpnet-base-v2`.
+2. Construct the class axis $\hat{\mathbf{a}}$ by averaging embeddings of 20 class-related terms and normalising.
+3. For each sentence vector $\mathbf{v}_i$, compute the reflection
+   $$
+   \mathbf{v}'_i = \mathbf{v}_i - 2(\mathbf{v}_i \cdot \hat{\mathbf{a}})\,\hat{\mathbf{a}}.
+   $$
+4. For each $\mathbf{v}'_i$, retrieve the 5 nearest sentences from a 500K-sentence reference corpus (philosophy and economics articles, FAISS-indexed).
+5. Pick the best match by coherence with neighbouring reflected sentences.
+6. Assemble the reflected text and run the coherence engine on both originals and reflections.
+
+## What we observe
+
+- **Recovery is partial, not complete.** ≈60% of reflected sentences decode to coherent pro-market or pro-capital claims. ≈30% decode to historical or descriptive claims that do not commit to either side. ≈10% decode to nonsense (the reflection lands in a region of the embedding manifold that has no corresponding natural-language sentence).
+- **Recovered coherence is lower than the original.** Original Manifesto excerpts score $\text{Coh}(\Gamma) \approx 0.79$ on the engine; the assembled reflection scores $\text{Coh}(\Gamma') \approx 0.61$. The reflected text has more local contradictions because the nearest-neighbour decode introduces sentences whose surrounding context does not match.
+- **The principal axis is identifiable.** Householder analysis on the original/reflected pairs (see [contradiction direction](/research/contradiction_direction)) consistently surfaces "class" as the top contested concept. This is a sanity check on the procedure: the axis we reflected across is the one the geometry recovers.
+
+## What the recovery property tells us
+
+The hypothesis was: a coherent ideology's structure is preserved under reflection across its principal axis. The data partially support this. The reflection preserves *structural* coherence (argument shape) better than it preserves *propositional* coherence (specific claims). The fact that 30% of reflections decode to neutral descriptive claims is also informative: those are the parts of Marx's framework that are not actually about class — the historical analysis, the institutional description, the technological observations. Those parts pass through reflection unchanged because they have near-zero projection onto the class axis. This is exactly what the geometric model predicts.
+
+## What we are explicitly not claiming
+
+- We are not claiming Marx is wrong (or right). The reflection procedure is symmetric; reflecting a free-market argument across the same axis would produce something that looks like Marx.
+- We are not claiming the reflected text *is* a coherent pro-capitalist framework. It is a low-fidelity sketch produced by a nearest-neighbour decoder. A human writer could clean it up; the procedure as published cannot.
+- We are not claiming any predictive validity for the engine's coherence score on ideological texts. This paper documents a structural test, not a forecast.
+
+## Limits
+
+- Sample size: 50 sentences. The reflection of *Capital* in full would test whether the recovery rate holds at scale; it is a future experiment.
+- The reference corpus biases what can be recovered. A corpus that contains no pro-market philosophy will not yield pro-market decodes.
+- The class axis is constructed by averaging 20 embeddings. Different choices of seed terms shift the axis and shift which sentences are reflected. We have not characterised this sensitivity.
+- The composite coherence score has unproven predictive validity. Treat all numbers above as descriptive.

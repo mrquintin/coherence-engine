@@ -1,0 +1,149 @@
+# Pre-registration document for the Reverse-Marxism reflection-recovery
+# rigor study (prompt 50, Wave 13). Frozen with respect to any
+# subsequent report. Bumping any value below requires a new
+# ``version:`` plus a ``justification:`` stanza explaining why the
+# change was made *before* re-looking at any new data. The runner
+# refuses to emit a report when the parsed document mismatches the
+# schema declared here.
+#
+# This file is parsed by run_rigor_study.py with the same tiny stdlib
+# YAML reader used by the cosine-paradox harness; the on-disk shape is
+# restricted to scalars and one level of mapping nesting.
+
+version: "v1.0"
+study_name: "reverse-marxism-rigor-v1"
+study_kind: "rigor_replication"
+
+dataset:
+  training_corpus: "Communist Manifesto + Capital vol I excerpts (axis fit)"
+  holdout_corpus: "Smith / Ricardo / Mill political-economy excerpts (axis evaluation)"
+  rationale: >-
+    The original headline (84.3% recovery via Householder reflection at
+    alpha=2) was reported on the same Marx text used to fit the class
+    axis. Held-out evaluation requires a non-overlapping political-
+    economy corpus so that the axis is fit on Marxist text and the
+    reflection is evaluated on independent text. Sentences in the
+    holdout corpus carry pre-existing ideology_label in {-1, +1} that is
+    derived from human-coded provenance, NOT from any axis fit.
+
+embedding_model:
+  id: "sentence-transformers/all-mpnet-base-v2"
+  version: "1.0.0"
+  source: "huggingface_hub"
+  output_dim: 768
+  rationale: >-
+    Same encoder as the original reverse-Marxism note and the rest of
+    the Wave-13 replication harnesses. Holding the encoder fixed
+    isolates the rigor dimensions (held-out axis, alpha sweep, random-
+    axis baseline) from encoder drift.
+
+axis_construction:
+  method: "centroid-of-seed-embeddings-then-l2-normalise"
+  seed_terms_count_minimum: 5
+  rationale: >-
+    Mirrors the construction in apps/site/.../research/reverse_marxism.mdx
+    where the class axis is built by averaging 20 class-related term
+    embeddings and L2-normalising. Seed terms are loaded from the
+    training corpus's ``axis_seed_embeddings`` block and never touched
+    by the holdout evaluation step.
+
+reflection:
+  formula: "v_prime = v - alpha * dot(v, axis) * axis"
+  notes: >-
+    For alpha=2 this is the standard Householder reflection across the
+    hyperplane orthogonal to ``axis``; alpha=1 is the projection
+    removal; alpha<1 dampens; alpha>2 amplifies. The grid below pins
+    the sweep up front so post-hoc alpha picking is impossible.
+
+alpha_grid:
+  - 0.5
+  - 1.0
+  - 1.5
+  - 2.0
+  - 2.5
+  - 3.0
+
+primary_hypothesis:
+  id: "H1"
+  statement: >-
+    The headline 84.3% reflection-recovery rate generalises to a held-
+    out political-economy corpus at alpha=2 — operationalised as the
+    held-out recovery rate's 95% bootstrap CI excluding the random-
+    reflection-baseline 95% CI from above.
+  test: "bootstrap CI on recovery rate vs random-axis null distribution"
+  decision_rule: >-
+    Confirm generalisation when held_out_recovery_ci_low > random_baseline_ci_high
+    at alpha=2. Refute (the reflection mechanism does not generalise)
+    when held_out_recovery_ci_low <= random_baseline_ci_high at alpha=2.
+
+secondary_hypothesis:
+  id: "H2"
+  statement: >-
+    Recovery rate at alpha=2 is non-trivially higher than at alpha
+    values in {0.5, 1.0} — operationalised as alpha=2 recovery >
+    max(alpha=0.5 recovery, alpha=1.0 recovery) by at least the random-
+    baseline standard deviation.
+
+n_random_axes: 100
+n_bootstrap: 10000
+ci_percent: 95.0
+
+random_seed: 50
+
+seeds:
+  axis_fit: 5050
+  random_axes: 5051
+  bootstrap_holdout: 5052
+  bootstrap_baseline: 5053
+
+stopping_rule:
+  minimum_holdout_sentences: 50
+  minimum_axis_seeds: 5
+  on_violation: "raise INSUFFICIENT_SAMPLE; do not emit a report"
+  rationale: >-
+    Below 50 holdout sentences the bootstrap CI on the recovery rate
+    is wider than the random-baseline interval, so the primary
+    hypothesis cannot be tested. Below 5 axis seeds the centroid is
+    dominated by individual seed-term noise.
+
+held_out_protocol:
+  rule: >-
+    The axis is fit ONLY on training_corpus.axis_seed_embeddings;
+    holdout_corpus.sentences are NEVER touched during axis fit. The
+    recovery test is evaluated only on holdout_corpus.sentences.
+  prohibition: >-
+    Mixing training and holdout sentences (either fitting the axis on
+    holdout sentences or evaluating recovery on training sentences) is
+    forbidden — the harness raises HeldOutLeakageError if it detects
+    overlap between the digests of the two slabs.
+
+random_baseline:
+  rule: >-
+    n_random_axes random unit vectors are sampled uniformly on the
+    unit sphere in the encoder's output dimension; for each random
+    axis we compute the holdout recovery rate at every alpha. The
+    baseline distribution per alpha is summarised by mean, std, and
+    95% CI across the n_random_axes draws.
+  null_hypothesis: "recovery rate near 0.5 at alpha=2 under random axis"
+  notes: >-
+    The 0.5 expectation is the idealised null; the harness reports the
+    empirical distribution and uses its CI (not the 0.5 idealisation)
+    as the threshold the held-out recovery must clear.
+
+negative_results_policy:
+  publish_when_generalises: true
+  publish_when_does_not_generalise: true
+  notes: >-
+    A finding that the 84.3% number does NOT survive held-out
+    evaluation is the publishable result and SHOULD be published
+    word-for-word. The rigor study exists precisely to test that.
+
+prohibited_actions:
+  - "fitting the axis on the same corpus used for evaluation"
+  - "reporting a single point estimate without the random-reflection null comparison"
+  - "post-hoc alpha selection (the alpha_grid above is frozen)"
+  - "discarding holdout sentences after seeing their reflection scores"
+  - "swapping recovery operationalisation after seeing results"
+  - "amending random_seed without bumping version"
+
+amendments: []

@@ -401,7 +401,7 @@ def test_dispatch_unique_key_blocks_duplicate_inserts(tmp_path):
 class _AlwaysFailingBackend:
     channel = "dry_run"
 
-    def send(self, to, subject, body):  # noqa: D401
+    def send(self, to, subject, body):
         raise NotificationBackendError("stubbed_transport_failure")
 
 

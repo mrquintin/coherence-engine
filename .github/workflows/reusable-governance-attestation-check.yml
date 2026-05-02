@@ -1,9 +1,10 @@
 # Reusable governance checks for baseline verification and attestation aging.
 #
-# Environment-scoped secrets: the CALLING job must set `environment: <name>` so that
-# `secrets: inherit` resolves UNCERTAINTY_GOVERNANCE_POLICY_BASELINES_JSON (and vars) from
-# that GitHub Environment. Configure environment protection (required reviewers) for
-# attestation/baseline workflows in Repository → Settings → Environments.
+# Environment-scoped secrets: the reusable job sets `environment` from
+# `governance_environment_slug` so UNCERTAINTY_GOVERNANCE_POLICY_BASELINES_JSON
+# (and vars) resolve from that GitHub Environment. Configure environment
+# protection (required reviewers) for attestation/baseline workflows in
+# Repository → Settings → Environments.
 #
 # check_kind:
 #   - baseline_verify — requires non-empty baselines secret; deterministic local verify.
@@ -44,6 +45,7 @@ jobs:
     if: inputs.check_kind == 'baseline_verify'
     name: Verify governance policy baselines
     runs-on: ubuntu-latest
+    environment: ${{ inputs.governance_environment_slug }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -205,6 +207,7 @@ jobs:
     if: inputs.check_kind == 'attestation_aging'
     name: Governance attestation aging report
     runs-on: ubuntu-latest
+    environment: ${{ inputs.governance_environment_slug }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

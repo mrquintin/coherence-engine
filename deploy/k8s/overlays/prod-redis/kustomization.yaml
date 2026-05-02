@@ -3,6 +3,5 @@ kind: Kustomization
 namespace: coherence-fund-prod
 resources:
   - ../prod
-patches:
-  - path: patch-broker.yaml
-
+patchesStrategicMerge:
+  - patch-broker.yaml

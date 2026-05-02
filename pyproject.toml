@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "coherence-engine"
-version = "0.1.7"
+version = "0.1.11"
 description = "Measure the internal logical coherence of any text on a 0-1 scale."
 readme = "README.md"
 license = {text = "MIT"}
@@ -32,12 +32,37 @@ full = [
     "torch>=2.0.0",
     "numpy>=1.21.0",
     "fastapi>=0.100.0",
+    "python-multipart>=0.0.9",
     "uvicorn>=0.23.0",
+    "pydantic-settings>=2.0.0",
     "sqlalchemy>=2.0.0",
     "psycopg[binary]>=3.1.0",
     "jsonschema>=4.0.0",
     "email-validator>=2.0.0",
     "alembic>=1.0.0",
+    "argon2-cffi>=23.1.0",
+    "cryptography>=42.0.0",
+    "httpx>=0.24.0",
+    "jinja2>=3.1.0",
+    "PyJWT>=2.8.0",
+    "PyYAML>=6.0.0",
+]
+fund-api = [
+    "fastapi>=0.100.0",
+    "python-multipart>=0.0.9",
+    "uvicorn>=0.23.0",
+    "pydantic-settings>=2.0.0",
+    "sqlalchemy>=2.0.0",
+    "psycopg[binary]>=3.1.0",
+    "jsonschema>=4.0.0",
+    "email-validator>=2.0.0",
+    "alembic>=1.0.0",
+    "argon2-cffi>=23.1.0",
+    "cryptography>=42.0.0",
+    "httpx>=0.24.0",
+    "jinja2>=3.1.0",
+    "PyJWT>=2.8.0",
+    "PyYAML>=6.0.0",
 ]
 fund-workers = [
     "confluent-kafka>=2.0.0",
@@ -46,7 +71,13 @@ fund-workers = [
 ]
 dev = [
     "pytest>=7.0.0",
+    "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.0.0",
+    "numpy>=1.21.0",
+    "boto3>=1.0.0",
+    "alembic>=1.0.0",
+    "python-multipart>=0.0.9",
+    "PyYAML>=6.0.0",
 ]
 
 [project.scripts]
@@ -58,11 +89,44 @@ coherence-engine-gui = "coherence_engine.gui:main"
 [project.urls]
 Homepage = "https://github.com/michaelquintin/coherence-engine"
 
-[tool.setuptools.packages.find]
-include = ["coherence_engine*"]
+[tool.setuptools]
+packages = [
+    "coherence_engine",
+    "coherence_engine.core",
+    "coherence_engine.data",
+    "coherence_engine.domain",
+    "coherence_engine.embeddings",
+    "coherence_engine.layers",
+    "coherence_engine.server",
+    "coherence_engine.server.fund",
+    "coherence_engine.server.fund.middleware",
+    "coherence_engine.server.fund.observability",
+    "coherence_engine.server.fund.repositories",
+    "coherence_engine.server.fund.routers",
+    "coherence_engine.server.fund.schemas",
+    "coherence_engine.server.fund.schemas.artifacts",
+    "coherence_engine.server.fund.schemas.events",
+    "coherence_engine.server.fund.security",
+    "coherence_engine.server.fund.services",
+    "coherence_engine.server.fund.services.stt",
+    "coherence_engine.server.fund.workers",
+]
+package-dir = {"coherence_engine" = "."}
 
 [tool.setuptools.package-data]
+"coherence_engine" = [
+    "data/governed/*.yaml",
+    "data/governed/*.json",
+]
 "coherence_engine.data" = ["*.json"]
+"coherence_engine.server.fund" = [
+    "data/**/*.json",
+    "data/**/*.md",
+    "static/admin/*",
+    "templates/admin/*",
+]
+"coherence_engine.server.fund.schemas.artifacts" = ["*.json"]
+"coherence_engine.server.fund.schemas.events" = ["*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -71,5 +135,130 @@ python_files = ["test_*.py"]
 pythonpath = [".."]
 markers = [
     "cloud_integration: tests that require live cloud/Vault credentials and staging-reachable providers",
+    "integration: tests that require local service containers or database-backed flows",
     "e2e: end-to-end pipeline reproducibility integration tests (offline, default suite)",
 ]
+
+# ---------------------------------------------------------------------------
+# Ruff (lint + format)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [
+    "build",
+    "dist",
+    "node_modules",
+    ".venv",
+    "alembic/versions",
+    "sdk",
+    "apps/*/src/sdk",
+    "coherence_engine.egg-info",
+    ".git.broken_*",
+    "Experiments",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "B",    # flake8-bugbear
+    "RUF",  # ruff-specific rules
+]
+# Repo-wide relaxations; revisit incrementally. Import sorting, pyupgrade, and
+# broad Bandit-style security scans are intentionally not part of this gate yet:
+# the current repo has a large historical backlog there, while this gate is
+# intended to catch correctness defects today.
+ignore = [
+    "E501",   # line-length handled by formatter
+    "B008",   # FastAPI uses Depends() in defaults
+    "RUF001", # prose/research strings intentionally contain Unicode punctuation
+    "RUF002",
+    "RUF003",
+    "RUF005", # iterable-unpacking rewrites are style-only for this codebase
+    "RUF012", # SQLAlchemy/FastAPI class-level attributes are reviewed separately
+    "RUF013", # implicit Optional backlog is tracked through mypy tightening
+    "RUF022", # export order is not a behavioral contract here
+    "RUF043", # pytest regex specificity is not part of the current gate
+    "RUF046", # math.floor/ceil readability is preferred in several numeric routines
+    "RUF059", # intentionally unpacked tuple slots are common in tests
+    "B007",   # tests often keep tuple shape visible while ignoring one slot
+    "E741",   # legacy mathematical snippets use short variable names
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B017", "E402"]
+"scripts/**" = ["E402"]
+"deploy/scripts/**" = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "coherence_engine",
+    "core",
+    "server",
+    "domain",
+    "layers",
+    "embeddings",
+    "sdk",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ---------------------------------------------------------------------------
+# Mypy (strict, backend)
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unreachable = true
+no_implicit_reexport = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+disallow_any_generics = true
+show_error_codes = true
+pretty = true
+exclude = [
+    "build/",
+    "dist/",
+    "alembic/versions/",
+    "sdk/",
+    "apps/",
+    "node_modules/",
+    "Experiments/",
+    "coherence_engine\\.egg-info/",
+    "\\.git\\.broken_.*/",
+]
+
+# Third-party libs without bundled stubs.  We still type-check our own
+# code strictly; these are import-only relaxations.
+[[tool.mypy.overrides]]
+module = [
+    "sentence_transformers.*",
+    "transformers.*",
+    "torch.*",
+    "confluent_kafka.*",
+    "boto3.*",
+    "botocore.*",
+    "hvac.*",
+    "redis.*",
+    "psycopg.*",
+    "sqlalchemy.*",
+    "alembic.*",
+    "PyQt6.*",
+    "matplotlib.*",
+    "numpy.*",
+    "pandas.*",
+    "jsonschema.*",
+    "email_validator.*",
+    "opentelemetry.*",
+    "prometheus_client.*",
+    "arq.*",
+]
+ignore_missing_imports = true

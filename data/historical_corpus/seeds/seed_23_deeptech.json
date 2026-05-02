@@ -1,0 +1,28 @@
+{
+  "company_name": "anon_3993066dfcb9b464",
+  "country": "CA",
+  "deck_uri": "coh://local/historical-corpus/seeds/bb32db7d-cc68-752c-87ca-d883937d281a/deck.pdf",
+  "domain_primary": "deeptech",
+  "eligibility": {
+    "consent_documented": true,
+    "date_window_ok": true,
+    "evidence_floor_ok": true,
+    "no_training_overlap_ok": true
+  },
+  "evidence_floor": {
+    "n_metrics_cited": 9,
+    "n_propositions": 22,
+    "n_sources_cited": 7
+  },
+  "memo_uri": "coh://local/historical-corpus/seeds/bb32db7d-cc68-752c-87ca-d883937d281a/memo.md",
+  "pitch_id": "bb32db7d-cc68-752c-87ca-d883937d281a",
+  "pitch_year": 2018,
+  "provenance": {
+    "consent_documented": true,
+    "ingested_at": "2026-04-25T00:00:00+00:00",
+    "ingestion_run_id": "ing_seed00000000seed",
+    "source": "synthetic"
+  },
+  "schema_version": "1",
+  "transcript_uri": "coh://local/historical-corpus/seeds/bb32db7d-cc68-752c-87ca-d883937d281a/transcript.txt"
+}

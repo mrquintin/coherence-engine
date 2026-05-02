@@ -1,0 +1,39 @@
+{
+  "portfolio_snapshot": {
+    "fund_nav_usd": 12000000.0,
+    "liquidity_reserve_usd": 600000.0,
+    "drawdown_proxy": 0.05,
+    "regime": "normal",
+    "domain_invested_usd": {
+      "market_economics": 1500000.0,
+      "public_health": 750000.0,
+      "governance": 250000.0
+    }
+  },
+  "validation_study": {
+    "schema_version": "validation-study-report-v1",
+    "data_hash": "synthetic-fixture",
+    "coefficients": [
+      {"name": "intercept", "point": -0.4},
+      {"name": "coherence_score", "point": 1.8}
+    ]
+  },
+  "historical_rows": [
+    {"domain": "market_economics", "coherence_superiority":  0.05, "outcome_superiority":  0.08, "check_size_usd": 50000},
+    {"domain": "market_economics", "coherence_superiority":  0.12, "outcome_superiority":  0.15, "check_size_usd": 75000},
+    {"domain": "market_economics", "coherence_superiority":  0.22, "outcome_superiority":  0.20, "check_size_usd": 100000},
+    {"domain": "market_economics", "coherence_superiority": -0.04, "outcome_superiority": -0.10, "check_size_usd": 50000},
+    {"domain": "market_economics", "coherence_superiority":  0.18, "outcome_superiority": -0.05, "check_size_usd": 200000},
+    {"domain": "market_economics", "coherence_superiority":  0.30, "outcome_superiority":  0.10, "check_size_usd": 100000},
+    {"domain": "governance",       "coherence_superiority":  0.25, "outcome_superiority":  0.18, "check_size_usd": 75000},
+    {"domain": "governance",       "coherence_superiority":  0.10, "outcome_superiority": -0.15, "check_size_usd": 150000},
+    {"domain": "governance",       "coherence_superiority": -0.02, "outcome_superiority": -0.05, "check_size_usd": 50000},
+    {"domain": "governance",       "coherence_superiority":  0.32, "outcome_superiority":  0.22, "check_size_usd": 100000},
+    {"domain": "public_health",    "coherence_superiority":  0.15, "outcome_superiority":  0.12, "check_size_usd": 50000},
+    {"domain": "public_health",    "coherence_superiority":  0.20, "outcome_superiority": -0.08, "check_size_usd": 250000},
+    {"domain": "public_health",    "coherence_superiority":  0.28, "outcome_superiority":  0.25, "check_size_usd": 75000},
+    {"domain": "public_health",    "coherence_superiority":  0.05, "outcome_superiority": -0.04, "check_size_usd": 50000}
+  ],
+  "projected_pipeline_volume": 36,
+  "false_pass_budget_usd": 600000
+}

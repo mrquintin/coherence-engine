@@ -7,9 +7,7 @@
 # download/ serve them directly from Releases, so "offline install" via a
 # git clone is not a supported path.
 # ---------------------------------------------------------------------------
-build/installers/
-build/release-artifacts/
-build/.installer-work/
+build/
 
 # ---------------------------------------------------------------------------
 # Language / ecosystem caches
@@ -32,6 +30,8 @@ node_modules/
 .cache/
 .parcel-cache/
 .next/
+.astro/
+*.tsbuildinfo
 .turbo/
 
 # Rust / Tauri
@@ -77,3 +77,7 @@ build/Build/
 
 # Runtime state directory (notifications dumps, transient app data)
 var/
+
+# Local Git recovery/backup folders are not project source.
+.git.broken_*/
+.vercel

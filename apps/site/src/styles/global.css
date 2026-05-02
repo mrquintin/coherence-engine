@@ -1,0 +1,71 @@
+@import 'katex/dist/katex.min.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-paper text-ink antialiased;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+a {
+  @apply text-accent underline-offset-2 hover:underline;
+}
+
+article h1 {
+  @apply text-3xl font-semibold tracking-tight mt-0 mb-4;
+}
+
+article h2 {
+  @apply text-2xl font-semibold tracking-tight mt-10 mb-3 border-b border-ink/10 pb-2;
+}
+
+article h3 {
+  @apply text-xl font-semibold mt-8 mb-2;
+}
+
+article p {
+  @apply leading-relaxed mb-4;
+}
+
+article ul,
+article ol {
+  @apply mb-4 ml-6 list-disc;
+}
+
+article ol {
+  @apply list-decimal;
+}
+
+article blockquote {
+  @apply border-l-4 border-accent/40 pl-4 italic text-muted my-6;
+}
+
+article code {
+  @apply bg-ink/5 px-1 py-0.5 rounded text-[0.92em] font-mono;
+}
+
+article pre {
+  @apply rounded-md p-4 overflow-x-auto text-[0.9em] my-6;
+}
+
+article pre code {
+  @apply bg-transparent p-0;
+}
+
+.skip-link {
+  @apply sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:bg-accent focus:text-white focus:px-3 focus:py-2 focus:rounded;
+}
+
+.caveat-banner {
+  @apply rounded-md border border-amber-300 bg-amber-50 text-amber-900 px-4 py-3 my-6 text-sm leading-relaxed;
+}

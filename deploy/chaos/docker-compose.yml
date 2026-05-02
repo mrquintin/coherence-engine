@@ -1,0 +1,123 @@
+# Chaos-testing topology (prompt 64).
+#
+# This compose file is consumed by ``deploy/chaos/run_scenario.py`` to
+# stage scripted failures (DB primary failover, Redis flap, S3 outage,
+# worker death mid-job) against an isolated, ephemeral copy of the
+# production topology.
+#
+# It is NEVER started in CI by default. The runner short-circuits unless
+# ``CHAOS=1`` is set in the environment.
+#
+# Service names are stable so chaos scenarios can refer to them by name
+# (``perturbation.target: postgres_primary``). Volumes are intentionally
+# unnamed (anonymous) so a ``docker compose down -v`` returns the
+# topology to a clean slate between scenarios.
+
+services:
+  postgres_primary:
+    image: postgres:15-alpine
+    container_name: ce_chaos_postgres_primary
+    environment:
+      POSTGRES_DB: coherence_chaos
+      POSTGRES_USER: coherence
+      POSTGRES_PASSWORD: chaos_local_only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coherence -d coherence_chaos"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks:
+      - chaos_net
+
+  postgres_replica:
+    image: postgres:15-alpine
+    container_name: ce_chaos_postgres_replica
+    environment:
+      POSTGRES_DB: coherence_chaos
+      POSTGRES_USER: coherence
+      POSTGRES_PASSWORD: chaos_local_only
+    depends_on:
+      postgres_primary:
+        condition: service_healthy
+    networks:
+      - chaos_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: ce_chaos_redis
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks:
+      - chaos_net
+
+  minio:
+    # S3-compatible object store; lets us simulate an S3 outage by
+    # ``docker compose stop minio`` without hitting AWS in test.
+    image: minio/minio:RELEASE.2024-01-01T16-36-33Z
+    container_name: ce_chaos_minio
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: chaos
+      MINIO_ROOT_PASSWORD: chaos_local_only
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks:
+      - chaos_net
+
+  scoring_worker:
+    # Stand-in for the ARQ scoring worker. The chaos harness can pause
+    # / kill this container to simulate a worker death mid-job. We use
+    # the same image as the API for parity; the entrypoint is the only
+    # difference.
+    image: coherence-engine:chaos
+    container_name: ce_chaos_scoring_worker
+    command: ["python", "-m", "coherence_engine.server.fund.workers.arq_worker"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://coherence:chaos_local_only@postgres_primary:5432/coherence_chaos
+      REDIS_URL: redis://redis:6379/0
+      OBJECT_STORAGE_BACKEND: s3
+      OBJECT_STORAGE_ENDPOINT: http://minio:9000
+      CHAOS_MODE: "1"
+    depends_on:
+      postgres_primary:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - chaos_net
+
+  api:
+    image: coherence-engine:chaos
+    container_name: ce_chaos_api
+    command: ["uvicorn", "coherence_engine.server.fund.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://coherence:chaos_local_only@postgres_primary:5432/coherence_chaos
+      REDIS_URL: redis://redis:6379/0
+      OBJECT_STORAGE_BACKEND: s3
+      OBJECT_STORAGE_ENDPOINT: http://minio:9000
+      CHAOS_MODE: "1"
+    ports:
+      - "18080:8000"
+    depends_on:
+      postgres_primary:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - chaos_net
+
+networks:
+  chaos_net:
+    name: ce_chaos_net
+    driver: bridge

@@ -1,0 +1,208 @@
+# Coherence Fund — SLO recording rules.
+#
+# Wave 16, prompt 63/70. One error_ratio + one good_events / valid_events
+# pair per SLO per canonical window. Naming convention:
+#
+#   coherence_fund:<slo_id>:error_ratio:<window>
+#   coherence_fund:<slo_id>:good_events:<window>
+#   coherence_fund:<slo_id>:valid_events:<window>
+#
+# Single source of truth for SLO numbers: docs/ops/slos.md.
+# Burn-rate alert rules live in deploy/prometheus/alert_rules.yaml.
+#
+# Validate locally:
+#   promtool check rules deploy/prometheus/recording_rules.yaml
+
+groups:
+  - name: coherence_fund_slo_recording_rules
+    interval: 30s
+    rules:
+      # ----------------------------------------------------------------------
+      # SLO_avail — POST /api/v1/applications availability (target 99.5%/30d).
+      # ----------------------------------------------------------------------
+      - record: coherence_fund:slo_avail:valid_events:5m
+        expr: |
+          sum(
+            rate(http_requests_total{handler="/api/v1/applications"}[5m])
+          )
+      - record: coherence_fund:slo_avail:good_events:5m
+        expr: |
+          sum(
+            rate(http_requests_total{handler="/api/v1/applications",status_code!~"5.."}[5m])
+          )
+      - record: coherence_fund:slo_avail:error_ratio:5m
+        expr: |
+          1 - (
+            coherence_fund:slo_avail:good_events:5m
+            /
+            clamp_min(coherence_fund:slo_avail:valid_events:5m, 1)
+          )
+      - record: coherence_fund:slo_avail:error_ratio:30m
+        expr: |
+          1 - (
+            sum(rate(http_requests_total{handler="/api/v1/applications",status_code!~"5.."}[30m]))
+            /
+            clamp_min(sum(rate(http_requests_total{handler="/api/v1/applications"}[30m])), 1)
+          )
+      - record: coherence_fund:slo_avail:error_ratio:1h
+        expr: |
+          1 - (
+            sum(rate(http_requests_total{handler="/api/v1/applications",status_code!~"5.."}[1h]))
+            /
+            clamp_min(sum(rate(http_requests_total{handler="/api/v1/applications"}[1h])), 1)
+          )
+      - record: coherence_fund:slo_avail:error_ratio:2h
+        expr: |
+          1 - (
+            sum(rate(http_requests_total{handler="/api/v1/applications",status_code!~"5.."}[2h]))
+            /
+            clamp_min(sum(rate(http_requests_total{handler="/api/v1/applications"}[2h])), 1)
+          )
+      - record: coherence_fund:slo_avail:error_ratio:6h
+        expr: |
+          1 - (
+            sum(rate(http_requests_total{handler="/api/v1/applications",status_code!~"5.."}[6h]))
+            /
+            clamp_min(sum(rate(http_requests_total{handler="/api/v1/applications"}[6h])), 1)
+          )
+      - record: coherence_fund:slo_avail:error_ratio:24h
+        expr: |
+          1 - (
+            sum(rate(http_requests_total{handler="/api/v1/applications",status_code!~"5.."}[24h]))
+            /
+            clamp_min(sum(rate(http_requests_total{handler="/api/v1/applications"}[24h])), 1)
+          )
+      - record: coherence_fund:slo_avail:error_ratio:72h
+        expr: |
+          1 - (
+            sum(rate(http_requests_total{handler="/api/v1/applications",status_code!~"5.."}[72h]))
+            /
+            clamp_min(sum(rate(http_requests_total{handler="/api/v1/applications"}[72h])), 1)
+          )
+
+      # ----------------------------------------------------------------------
+      # SLO_latency — pipeline P95 ≤ 30s. Treat one stage event with
+      # duration > 30s as a "bad" event.
+      # ----------------------------------------------------------------------
+      - record: coherence_fund:slo_latency:valid_events:5m
+        expr: |
+          sum(
+            increase(coherence_fund_pipeline_stage_events_total{stage="notify",status="success"}[5m])
+          )
+      - record: coherence_fund:slo_latency:good_events:5m
+        expr: |
+          sum(
+            increase(coherence_fund_pipeline_stage_events_total{stage="notify",status="success"}[5m])
+          )
+          -
+          sum(
+            increase(coherence_fund_pipeline_stage_warn_total{stage="notify"}[5m])
+          )
+      - record: coherence_fund:slo_latency:error_ratio:5m
+        expr: |
+          1 - (
+            coherence_fund:slo_latency:good_events:5m
+            /
+            clamp_min(coherence_fund:slo_latency:valid_events:5m, 1)
+          )
+      - record: coherence_fund:slo_latency:error_ratio:30m
+        expr: |
+          sum(increase(coherence_fund_pipeline_stage_warn_total{stage="notify"}[30m]))
+          /
+          clamp_min(sum(increase(coherence_fund_pipeline_stage_events_total{stage="notify",status="success"}[30m])), 1)
+      - record: coherence_fund:slo_latency:error_ratio:1h
+        expr: |
+          sum(increase(coherence_fund_pipeline_stage_warn_total{stage="notify"}[1h]))
+          /
+          clamp_min(sum(increase(coherence_fund_pipeline_stage_events_total{stage="notify",status="success"}[1h])), 1)
+      - record: coherence_fund:slo_latency:error_ratio:2h
+        expr: |
+          sum(increase(coherence_fund_pipeline_stage_warn_total{stage="notify"}[2h]))
+          /
+          clamp_min(sum(increase(coherence_fund_pipeline_stage_events_total{stage="notify",status="success"}[2h])), 1)
+      - record: coherence_fund:slo_latency:error_ratio:6h
+        expr: |
+          sum(increase(coherence_fund_pipeline_stage_warn_total{stage="notify"}[6h]))
+          /
+          clamp_min(sum(increase(coherence_fund_pipeline_stage_events_total{stage="notify",status="success"}[6h])), 1)
+      - record: coherence_fund:slo_latency:error_ratio:24h
+        expr: |
+          sum(increase(coherence_fund_pipeline_stage_warn_total{stage="notify"}[24h]))
+          /
+          clamp_min(sum(increase(coherence_fund_pipeline_stage_events_total{stage="notify",status="success"}[24h])), 1)
+      - record: coherence_fund:slo_latency:error_ratio:72h
+        expr: |
+          sum(increase(coherence_fund_pipeline_stage_warn_total{stage="notify"}[72h]))
+          /
+          clamp_min(sum(increase(coherence_fund_pipeline_stage_events_total{stage="notify",status="success"}[72h])), 1)
+
+      # ----------------------------------------------------------------------
+      # SLO_scoring_success — score-stage success ratio (target 99%/30d).
+      # ----------------------------------------------------------------------
+      - record: coherence_fund:slo_scoring:valid_events:5m
+        expr: |
+          sum(
+            increase(coherence_fund_pipeline_stage_events_total{stage="score"}[5m])
+          )
+      - record: coherence_fund:slo_scoring:good_events:5m
+        expr: |
+          sum(
+            increase(coherence_fund_pipeline_stage_events_total{stage="score",status="success"}[5m])
+          )
+      - record: coherence_fund:slo_scoring:error_ratio:5m
+        expr: |
+          1 - (
+            coherence_fund:slo_scoring:good_events:5m
+            /
+            clamp_min(coherence_fund:slo_scoring:valid_events:5m, 1)
+          )
+      - record: coherence_fund:slo_scoring:error_ratio:30m
+        expr: |
+          1 - (
+            sum(increase(coherence_fund_pipeline_stage_events_total{stage="score",status="success"}[30m]))
+            /
+            clamp_min(sum(increase(coherence_fund_pipeline_stage_events_total{stage="score"}[30m])), 1)
+          )
+      - record: coherence_fund:slo_scoring:error_ratio:1h
+        expr: |
+          1 - (
+            sum(increase(coherence_fund_pipeline_stage_events_total{stage="score",status="success"}[1h]))
+            /
+            clamp_min(sum(increase(coherence_fund_pipeline_stage_events_total{stage="score"}[1h])), 1)
+          )
+      - record: coherence_fund:slo_scoring:error_ratio:2h
+        expr: |
+          1 - (
+            sum(increase(coherence_fund_pipeline_stage_events_total{stage="score",status="success"}[2h]))
+            /
+            clamp_min(sum(increase(coherence_fund_pipeline_stage_events_total{stage="score"}[2h])), 1)
+          )
+      - record: coherence_fund:slo_scoring:error_ratio:6h
+        expr: |
+          1 - (
+            sum(increase(coherence_fund_pipeline_stage_events_total{stage="score",status="success"}[6h]))
+            /
+            clamp_min(sum(increase(coherence_fund_pipeline_stage_events_total{stage="score"}[6h])), 1)
+          )
+      - record: coherence_fund:slo_scoring:error_ratio:24h
+        expr: |
+          1 - (
+            sum(increase(coherence_fund_pipeline_stage_events_total{stage="score",status="success"}[24h]))
+            /
+            clamp_min(sum(increase(coherence_fund_pipeline_stage_events_total{stage="score"}[24h])), 1)
+          )
+      - record: coherence_fund:slo_scoring:error_ratio:72h
+        expr: |
+          1 - (
+            sum(increase(coherence_fund_pipeline_stage_events_total{stage="score",status="success"}[72h]))
+            /
+            clamp_min(sum(increase(coherence_fund_pipeline_stage_events_total{stage="score"}[72h])), 1)
+          )
+
+      # ----------------------------------------------------------------------
+      # SLO_calibration_freshness — drift-report regenerated ≤ 24h.
+      # Single freshness gauge; alert on age > 86400s.
+      # ----------------------------------------------------------------------
+      - record: coherence_fund:slo_calibration:age_seconds
+        expr: |
+          max(coherence_fund_calibration_drift_report_age_seconds)

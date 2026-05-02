@@ -7,8 +7,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-_LOG_ARTIFACT = logging.getLogger(__name__)
-
 from coherence_engine.core.types import Transcript
 from coherence_engine.server.fund import models
 from coherence_engine.server.fund.repositories.application_repository import ApplicationRepository
@@ -32,6 +30,8 @@ from coherence_engine.server.fund.services.transcript_quality import (
     TranscriptQualityReport,
     evaluate_transcript,
 )
+
+_LOG_ARTIFACT = logging.getLogger(__name__)
 
 SHADOW_ARTIFACT_KIND = "shadow_decision_artifact"
 
@@ -517,6 +517,30 @@ class ApplicationService:
                         app.id,
                         canonical_decision,
                     )
+                # Prompt 54 -- on a ``pass`` decision, emit a
+                # ``scheduling_requested`` event so the scheduler
+                # can offer partner-meeting slots to the founder.
+                # Outbox-only: the actual Cal.com / Google Calendar
+                # call is deferred to the scheduler service path so
+                # a backend outage never blocks the decision write.
+                if canonical_decision == "pass":
+                    try:
+                        from coherence_engine.server.fund.services.scheduler import (
+                            emit_scheduling_event,
+                        )
+
+                        emit_scheduling_event(
+                            self.events,
+                            application_id=app.id,
+                            partner_email=self._resolve_partner_email(app),
+                            trace_id=job.trace_id or f"trc_{job.id}",
+                            idempotency_key=f"{job.idempotency_key}:SchedulingRequested",
+                        )
+                    except Exception:  # pragma: no cover - best-effort
+                        _LOG_ARTIFACT.exception(
+                            "scheduling_requested_emit_failed application_id=%s",
+                            app.id,
+                        )
 
             self.repository.mark_scoring_job_completed(job.id)
             return {
@@ -587,6 +611,22 @@ class ApplicationService:
 
         root = self._notification_dry_run_dir or _Path.cwd() / "var" / "notifications"
         return DryRunBackend(_Path(root))
+
+    def _resolve_partner_email(self, application: Any) -> str:
+        """Return the partner email used for scheduler proposals.
+
+        The dedicated partner-routing surface (round-robin across
+        active partners) lives in a separate workstream; until it
+        lands the env override ``SCHEDULER_DEFAULT_PARTNER_EMAIL``
+        is the single fallback so the ``scheduling_requested``
+        event always carries a non-empty address.
+        """
+        import os as _os
+
+        return _os.getenv(
+            "SCHEDULER_DEFAULT_PARTNER_EMAIL",
+            "partners@coherence.fund",
+        )
 
     def _dispatch_enforce_notification(
         self,
@@ -699,6 +739,82 @@ class ApplicationService:
         self.repository.db.flush()
         return rec
 
+    def maybe_sync_cap_table(
+        self,
+        application_id: str,
+        *,
+        backend: Optional[Any] = None,
+        instrument_type: str = "safe_post_money",
+        valuation_cap_usd: int = 0,
+        discount: float = 0.0,
+        board_consent_uri: str = "",
+    ) -> Optional[Dict[str, Any]]:
+        """Attempt a cap-table issuance sync after sign + fund (prompt 68).
+
+        Idempotent and conditional: returns ``None`` when the upstream
+        gates (signed SAFE + sent investment instruction) are not yet
+        both satisfied, otherwise returns a small descriptor of the
+        recorded :class:`CapTableIssuance`. Repeat calls collapse onto
+        the same row via the deterministic idempotency key.
+
+        Designed to be called from both the e-signature webhook (after
+        a request transitions to ``signed``) and the capital webhook
+        (after an instruction transitions to ``sent``); whichever
+        side fires second is the one that performs the sync.
+        """
+        from coherence_engine.server.fund.services.cap_table import (
+            CapTableService,
+            compute_idempotency_key,
+            preconditions_satisfied,
+        )
+
+        signature, instruction = preconditions_satisfied(
+            self.repository.db, application_id=application_id
+        )
+        if signature is None or instruction is None:
+            return None
+
+        if backend is None:
+            from coherence_engine.server.fund.services.cap_table_backends import (
+                CapTableBackendConfigError,
+                backend_for_provider,
+            )
+            import os as _os
+
+            provider = _os.getenv("CAP_TABLE_PROVIDER", "carta")
+            try:
+                backend = backend_for_provider(provider)
+            except CapTableBackendConfigError as exc:
+                _LOG_ARTIFACT.warning(
+                    "cap_table_sync_skipped application_id=%s reason=config:%s",
+                    application_id,
+                    exc,
+                )
+                return None
+
+        key = compute_idempotency_key(
+            application_id, instrument_type, salt=instruction.id
+        )
+        service = CapTableService(self.repository.db)
+        row = service.record_issuance(
+            backend=backend,
+            application_id=application_id,
+            instrument_type=instrument_type,
+            amount_usd=int(instruction.amount_usd),
+            valuation_cap_usd=int(valuation_cap_usd or 0),
+            discount=float(discount or 0.0),
+            board_consent_uri=board_consent_uri,
+            idempotency_key=key,
+            verify_preconditions=False,
+        )
+        return {
+            "issuance_id": row.id,
+            "application_id": application_id,
+            "provider": row.provider,
+            "provider_issuance_id": row.provider_issuance_id,
+            "status": row.status,
+        }
+
     def set_scoring_mode(
         self,
         application_id: str,
@@ -746,4 +862,3 @@ class ApplicationService:
             "new_mode": new_mode,
             "changed": True,
         }
-

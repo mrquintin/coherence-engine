@@ -1,6 +1,9 @@
 name: Release
 
 on:
+  push:
+    tags:
+      - "v*.*.*"
   workflow_dispatch:
     inputs:
       environment_profile:
@@ -100,9 +103,11 @@ on:
         type: string
 
 permissions:
-  id-token: write
-  contents: read
+  id-token: write       # cosign keyless OIDC signing
+  contents: write       # tag-triggered jobs need to publish releases + open VERSION-bump PRs
+  packages: write       # push container images to GHCR
   actions: read
+  pull-requests: write  # open the post-release VERSION bump PR
 
 concurrency:
   group: release-${{ github.ref }}
@@ -114,6 +119,7 @@ jobs:
   oncall_release_gate:
     name: On-call policy & drill gate
     runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -126,7 +132,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev,fund-workers]"
+          python -m pip install -e ".[dev,fund-api,fund-workers]"
           python -m pip install "PyYAML>=6.0"
 
       # Latest run of oncall-route-verification that uploaded oncall-live-webhook-drill (live POST path).
@@ -340,7 +346,7 @@ jobs:
           paths = [
               root / ".github/workflows/oncall-route-verification.yml",
               root / ".github/workflows/uncertainty-recalibration.yml",
-              root / "deploy/k8s/configmap-env-template.yaml",
+              root / "deploy/k8s/base/configmap-env-template.yaml",
               root / "deploy/helm/coherence-fund/values.yaml",
               root / "deploy/helm/coherence-fund/values-prod.yaml",
           ]
@@ -361,7 +367,7 @@ jobs:
           needle = "COHERENCE_FUND_OPS_ALERT_ROUTER_MODE"
           files = [
               pathlib.Path("deploy/systemd/coherence-fund.env.example"),
-              pathlib.Path("deploy/k8s/configmap-env-template.yaml"),
+              pathlib.Path("deploy/k8s/base/configmap-env-template.yaml"),
               pathlib.Path("deploy/helm/coherence-fund/values.yaml"),
           ]
           for f in files:
@@ -512,6 +518,7 @@ jobs:
 
   preflight_gate:
     name: Preflight Gate
+    if: github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/deploy-preflight-gate.yml
     with:
       environment_profile: ${{ inputs.environment_profile }}
@@ -529,7 +536,7 @@ jobs:
     name: Deploy Production
     runs-on: ubuntu-latest
     needs: [preflight_gate, oncall_release_gate]
-    if: ${{ needs.preflight_gate.result == 'success' && needs.oncall_release_gate.result == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && needs.preflight_gate.result == 'success' && needs.oncall_release_gate.result == 'success' }}
     environment:
       name: production
     steps:
@@ -556,7 +563,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev,fund-workers]"
+          python -m pip install -e ".[dev,fund-api,fund-workers]"
 
       - name: Prepare kubeconfig
         if: ${{ inputs.deploy_target == 'helm' || inputs.deploy_target == 'k8s' }}
@@ -673,3 +680,332 @@ jobs:
               ;;
           esac
 
+
+  # =========================================================================
+  # Tag-triggered release pipeline (prompt 67).
+  #
+  # Fires on git tag `v*.*.*`. Builds + signs container images for the backend
+  # and each Next.js app, builds + signs the helm chart, generates a changelog
+  # from conventional commits, creates a GitHub Release with artifacts, and
+  # opens a PR to bump the VERSION file on main.
+  #
+  # Prohibitions enforced here:
+  #   * Refuses to publish if `release_readiness_check.py` fails.
+  #   * Never pushes an unsigned image (each push step is followed by
+  #     `cosign sign`).
+  #   * Always opens the VERSION-bump PR after publish.
+  # =========================================================================
+
+  release_lint_test:
+    name: Release · Lint + Type + Test
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,fund-api,fund-workers]"
+          python -m pip install ruff mypy pre-commit
+      - name: Ruff
+        run: ruff check .
+      - name: Mypy (strict)
+        run: mypy server core
+      - name: Pytest (unit + integration)
+        run: pytest -p "no:pytest-qt" -q
+
+  release_readiness_gate:
+    name: Release · Readiness Gate
+    needs: release_lint_test
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,fund-api,fund-workers]"
+      - name: release_readiness_check.py
+        run: |
+          python deploy/scripts/release_readiness_check.py \
+            --json-out artifacts/release-readiness.json \
+            --markdown-out artifacts/release-readiness.md
+      - name: Upload readiness report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-readiness-${{ github.run_id }}
+          path: artifacts/release-readiness.*
+
+  release_changelog:
+    name: Release · Changelog
+    needs: release_readiness_gate
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Resolve version + previous tag
+        id: meta
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          PREV="$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${GITHUB_REF_NAME}$" | head -n 1 || true)"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "prev_tag=${PREV}"   >> "$GITHUB_OUTPUT"
+      - name: Render changelog
+        run: |
+          mkdir -p artifacts
+          python scripts/release/cut_release.py \
+            --since "${{ steps.meta.outputs.prev_tag }}" \
+            --until "${GITHUB_REF_NAME}" \
+            --release-notes-out artifacts/CHANGELOG_RELEASE.md \
+            --json-out artifacts/release-plan.json \
+            --require-readiness
+      - name: Upload changelog artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-changelog-${{ github.run_id }}
+          path: artifacts/CHANGELOG_RELEASE.md
+
+  release_build_sign:
+    name: Release · Build + Sign images
+    needs: release_changelog
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        component:
+          - name: backend
+            context: .
+            dockerfile: ./Dockerfile
+            image: ghcr.io/${{ github.repository }}/backend
+          - name: founder-portal
+            context: ./apps/founder_portal
+            dockerfile: ./apps/founder_portal/Dockerfile
+            image: ghcr.io/${{ github.repository }}/founder-portal
+          - name: partner-dashboard
+            context: ./apps/partner_dashboard
+            dockerfile: ./apps/partner_dashboard/Dockerfile
+            image: ghcr.io/${{ github.repository }}/partner-dashboard
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+      - name: Build + push image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.component.context }}
+          file: ${{ matrix.component.dockerfile }}
+          push: true
+          tags: |
+            ${{ matrix.component.image }}:${{ needs.release_changelog.outputs.version }}
+            ${{ matrix.component.image }}:latest
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            GIT_TAG=${{ github.ref_name }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+          provenance: true
+          sbom: true
+      - name: Cosign sign (keyless OIDC)
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign sign --yes \
+            "${{ matrix.component.image }}@${{ steps.build.outputs.digest }}"
+      - name: Cosign attest SLSA provenance
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cat > /tmp/predicate.json <<'PRED'
+          {
+            "buildType": "https://github.com/Attestations/GitHubActionsWorkflow@v1",
+            "builder": {"id": "https://github.com/${{ github.repository }}/actions"},
+            "invocation": {
+              "configSource": {
+                "uri": "git+https://github.com/${{ github.repository }}@${{ github.ref }}",
+                "digest": {"sha1": "${{ github.sha }}"}
+              }
+            },
+            "metadata": {
+              "buildInvocationId": "${{ github.run_id }}",
+              "completeness": {"parameters": true, "environment": false, "materials": false}
+            }
+          }
+          PRED
+          cosign attest --yes \
+            --predicate /tmp/predicate.json \
+            --type slsaprovenance \
+            "${{ matrix.component.image }}@${{ steps.build.outputs.digest }}"
+
+  release_helm_chart:
+    name: Release · Build + Sign helm chart
+    needs: [release_changelog, release_build_sign]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "v3.14.4"
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+      - name: Helm lint + template
+        run: |
+          helm lint deploy/helm/coherence-fund
+          helm template deploy/helm/coherence-fund > /tmp/render.yaml
+      - name: Helm package
+        id: package
+        run: |
+          mkdir -p artifacts/helm
+          helm package deploy/helm/coherence-fund \
+            --version "${{ needs.release_changelog.outputs.version }}" \
+            --app-version "${{ needs.release_changelog.outputs.version }}" \
+            --destination artifacts/helm
+          CHART_TGZ="$(ls artifacts/helm/coherence-fund-*.tgz | head -n 1)"
+          echo "chart_tgz=${CHART_TGZ}" >> "$GITHUB_OUTPUT"
+      - name: Login to GHCR (OCI helm)
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Helm push (OCI)
+        id: push
+        run: |
+          helm push "${{ steps.package.outputs.chart_tgz }}" \
+            "oci://ghcr.io/${{ github.repository }}/charts" 2> /tmp/helm-push.log
+          DIGEST="$(grep -E 'Digest:' /tmp/helm-push.log | awk '{print $2}')"
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+      - name: Cosign sign helm chart
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign sign --yes \
+            "ghcr.io/${{ github.repository }}/charts/coherence-fund@${{ steps.push.outputs.digest }}"
+          cosign sign-blob --yes \
+            --output-signature "${{ steps.package.outputs.chart_tgz }}.sig" \
+            --output-certificate "${{ steps.package.outputs.chart_tgz }}.pem" \
+            "${{ steps.package.outputs.chart_tgz }}"
+      - name: Upload helm artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-helm-${{ github.run_id }}
+          path: artifacts/helm/
+
+  release_publish:
+    name: Release · Publish GitHub Release + bump VERSION
+    needs: [release_changelog, release_build_sign, release_helm_chart]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout (full)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Download changelog
+        uses: actions/download-artifact@v4
+        with:
+          name: release-changelog-${{ github.run_id }}
+          path: artifacts/
+      - name: Download helm chart
+        uses: actions/download-artifact@v4
+        with:
+          name: release-helm-${{ github.run_id }}
+          path: artifacts/helm/
+      - name: Build backend wheel + sdist
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel --sdist --outdir artifacts/wheel
+      - name: gh release create
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes-file artifacts/CHANGELOG_RELEASE.md \
+            artifacts/helm/coherence-fund-*.tgz \
+            artifacts/helm/*.sig 2>/dev/null || true
+          gh release upload "${GITHUB_REF_NAME}" \
+            artifacts/wheel/*.whl artifacts/wheel/*.tar.gz --clobber
+      - name: Bump VERSION on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.release_changelog.outputs.version }}"
+          BRANCH="release/post-${VERSION}-version-bump"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout -B "${BRANCH}" origin/main
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path("VERSION")
+          cur = p.read_text(encoding="utf-8").strip()
+          m = re.match(r"^(\d+)\.(\d+)\.(\d+)$", cur)
+          if not m:
+              raise SystemExit(f"VERSION not semver: {cur!r}")
+          major, minor, patch = (int(x) for x in m.groups())
+          nxt = f"{major}.{minor}.{patch + 1}"
+          p.write_text(nxt + "\n", encoding="utf-8")
+          print(f"bumped {cur} -> {nxt}")
+          PY
+          git add VERSION
+          git commit -m "chore(release): bump VERSION after ${VERSION}"
+          git push -u origin "${BRANCH}"
+          gh pr create \
+            --base main \
+            --head "${BRANCH}" \
+            --title "chore(release): post-${VERSION} VERSION bump" \
+            --body "Automated post-release VERSION bump after \`${VERSION}\`. Generated by .github/workflows/release.yml."

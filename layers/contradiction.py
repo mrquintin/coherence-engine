@@ -12,7 +12,7 @@ import re
 from typing import Optional
 
 from coherence_engine.core.types import (
-    Proposition, ContradictionPair, ArgumentStructure, LayerResult,
+    ContradictionPair, ArgumentStructure, LayerResult,
 )
 
 
@@ -241,8 +241,13 @@ class HeuristicContradictionDetector:
                         explanation=explanation,
                     ))
 
-        n_pairs = max(len(propositions) * (len(propositions) - 1) // 2, 1)
-        score = max(0.0, 1.0 - (len(contradictions) / n_pairs))
+        # Pair-count normalization dilutes contradictions in longer arguments:
+        # five direct clashes across nine propositions would still score 0.86
+        # because there are thirty-six possible pairs. For the heuristic
+        # fallback, score the burden of contradiction against the number of
+        # propositions instead, using confidence as the severity weight.
+        severity = sum(c.confidence for c in contradictions)
+        score = max(0.0, 1.0 - (severity / max(len(propositions), 1)))
 
         return (score, contradictions)
 

@@ -2,6 +2,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: coherence-fund-api
+  namespace: coherence-fund
 spec:
   minReplicas: 3
   maxReplicas: 20
@@ -23,6 +24,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: coherence-fund-worker
+  namespace: coherence-fund
 spec:
   minReplicas: 2
   maxReplicas: 10
@@ -44,6 +46,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: coherence-fund-scoring-worker
+  namespace: coherence-fund
 spec:
   minReplicas: 2
   maxReplicas: 10
@@ -60,4 +63,3 @@ spec:
         target:
           type: Utilization
           averageUtilization: 80
-

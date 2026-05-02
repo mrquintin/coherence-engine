@@ -1,0 +1,1172 @@
+{
+  "schema_version": "1",
+  "summary": {
+    "total": 145,
+    "by_severity": {
+      "error": 50,
+      "warn": 95
+    }
+  },
+  "findings": [
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/app.py",
+      "line": 55,
+      "col": 16,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/app.py",
+      "line": 62,
+      "col": 32,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/app.py",
+      "line": 67,
+      "col": 22,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/app.py",
+      "line": 74,
+      "col": 21,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/app.py",
+      "line": 74,
+      "col": 53,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/repositories/application_repository.py",
+      "line": 88,
+      "col": 23,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/repositories/application_repository.py",
+      "line": 96,
+      "col": 33,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/repositories/application_repository.py",
+      "line": 106,
+      "col": 22,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/repositories/application_repository.py",
+      "line": 107,
+      "col": 23,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/scoring_worker.py",
+      "line": 36,
+      "col": 10,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/security/auth.py",
+      "line": 62,
+      "col": 11,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/security/auth.py",
+      "line": 66,
+      "col": 11,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/security/jwks_cache.py",
+      "line": 38,
+      "col": 29,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/security/jwks_cache.py",
+      "line": 40,
+      "col": 35,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/security/jwks_cache.py",
+      "line": 66,
+      "col": 32,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/security/middleware.py",
+      "line": 29,
+      "col": 11,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/security/middleware.py",
+      "line": 33,
+      "col": 11,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/security/middleware.py",
+      "line": 37,
+      "col": 11,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/security/middleware.py",
+      "line": 41,
+      "col": 10,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/security/middleware.py",
+      "line": 49,
+      "col": 11,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/security/middleware.py",
+      "line": 53,
+      "col": 15,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/security/middleware.py",
+      "line": 57,
+      "col": 15,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/accredited_backends.py",
+      "line": 167,
+      "col": 12,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/alert_routing.py",
+      "line": 49,
+      "col": 11,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/alert_routing.py",
+      "line": 114,
+      "col": 19,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/decision_policy.py",
+      "line": 197,
+      "col": 14,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/event_publisher.py",
+      "line": 78,
+      "col": 10,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/notification_backends.py",
+      "line": 208,
+      "col": 16,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/object_storage.py",
+      "line": 213,
+      "col": 24,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/object_storage.py",
+      "line": 215,
+      "col": 19,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/object_storage.py",
+      "line": 216,
+      "col": 21,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/object_storage.py",
+      "line": 221,
+      "col": 21,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/object_storage.py",
+      "line": 226,
+      "col": 21,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/ops_telemetry.py",
+      "line": 236,
+      "col": 11,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/ops_telemetry.py",
+      "line": 243,
+      "col": 11,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/ops_telemetry.py",
+      "line": 309,
+      "col": 10,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/ops_telemetry.py",
+      "line": 332,
+      "col": 11,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/ops_telemetry.py",
+      "line": 400,
+      "col": 11,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/outbox_dispatcher.py",
+      "line": 26,
+      "col": 10,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/outbox_dispatcher.py",
+      "line": 137,
+      "col": 11,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/storage_backends.py",
+      "line": 174,
+      "col": 33,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/storage_backends.py",
+      "line": 327,
+      "col": 28,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/storage_backends.py",
+      "line": 328,
+      "col": 53,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/uncertainty.py",
+      "line": 69,
+      "col": 11,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/uncertainty.py",
+      "line": 79,
+      "col": 10,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/services/uncertainty_governance.py",
+      "line": 285,
+      "col": 10,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/worker_healthcheck.py",
+      "line": 53,
+      "col": 61,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/worker_healthcheck.py",
+      "line": 54,
+      "col": 51,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/worker_healthcheck.py",
+      "line": 55,
+      "col": 48,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "error",
+      "path": "server/fund/worker_healthcheck.py",
+      "line": 56,
+      "col": 47,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "cli.py",
+      "line": 2862,
+      "col": 7,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/evaluate_oncall_evidence_exception.py",
+      "line": 262,
+      "col": 16,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/evaluate_oncall_evidence_exception.py",
+      "line": 263,
+      "col": 16,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/evaluate_oncall_evidence_exception.py",
+      "line": 264,
+      "col": 17,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/evaluate_oncall_evidence_exception.py",
+      "line": 506,
+      "col": 25,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/evaluate_oncall_evidence_exception.py",
+      "line": 552,
+      "col": 13,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/evaluate_oncall_evidence_exception.py",
+      "line": 605,
+      "col": 25,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/migration_ci_gate.py",
+      "line": 121,
+      "col": 10,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/migration_ci_gate.py",
+      "line": 199,
+      "col": 28,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/release_readiness_check.py",
+      "line": 589,
+      "col": 13,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/report_governance_attestation_age.py",
+      "line": 98,
+      "col": 13,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/report_governance_attestation_age.py",
+      "line": 99,
+      "col": 18,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/report_governance_attestation_age.py",
+      "line": 101,
+      "col": 22,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/report_governance_attestation_age.py",
+      "line": 113,
+      "col": 33,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/report_governance_attestation_age.py",
+      "line": 114,
+      "col": 33,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/report_governance_attestation_age.py",
+      "line": 115,
+      "col": 29,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/report_governance_attestation_age.py",
+      "line": 133,
+      "col": 15,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/report_governance_attestation_age.py",
+      "line": 134,
+      "col": 14,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/report_governance_attestation_age.py",
+      "line": 166,
+      "col": 12,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/report_governance_attestation_age.py",
+      "line": 169,
+      "col": 67,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/report_governance_attestation_age.py",
+      "line": 172,
+      "col": 12,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/report_governance_attestation_age.py",
+      "line": 177,
+      "col": 12,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/report_governance_attestation_age.py",
+      "line": 183,
+      "col": 15,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/report_governance_attestation_age.py",
+      "line": 323,
+      "col": 23,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/report_governance_attestation_age.py",
+      "line": 325,
+      "col": 19,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/report_governance_attestation_age.py",
+      "line": 338,
+      "col": 35,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/report_governance_attestation_age.py",
+      "line": 359,
+      "col": 9,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/report_governance_enrollment_coverage.py",
+      "line": 204,
+      "col": 16,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/report_governance_enrollment_coverage.py",
+      "line": 209,
+      "col": 17,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 136,
+      "col": 13,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 140,
+      "col": 14,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 146,
+      "col": 13,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 152,
+      "col": 13,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 165,
+      "col": 15,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 347,
+      "col": 16,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 352,
+      "col": 14,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 353,
+      "col": 12,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 354,
+      "col": 16,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 356,
+      "col": 24,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 357,
+      "col": 15,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 360,
+      "col": 26,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 428,
+      "col": 12,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 431,
+      "col": 12,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 446,
+      "col": 11,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 587,
+      "col": 18,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 599,
+      "col": 19,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 608,
+      "col": 18,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 621,
+      "col": 19,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 636,
+      "col": 15,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 663,
+      "col": 14,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 671,
+      "col": 31,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 674,
+      "col": 41,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 676,
+      "col": 18,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 678,
+      "col": 43,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 688,
+      "col": 22,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/route_governance_attestation_escalation.py",
+      "line": 690,
+      "col": 26,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/synthetic_alert_drill.py",
+      "line": 59,
+      "col": 20,
+      "message": "os.getenv outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/validate_oncall_tracker_handoff.py",
+      "line": 649,
+      "col": 22,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/validate_oncall_tracker_handoff.py",
+      "line": 650,
+      "col": 22,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/validate_oncall_tracker_handoff.py",
+      "line": 793,
+      "col": 18,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/validate_oncall_tracker_handoff.py",
+      "line": 794,
+      "col": 18,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/validate_oncall_tracker_handoff.py",
+      "line": 808,
+      "col": 15,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/validate_oncall_tracker_handoff.py",
+      "line": 809,
+      "col": 19,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/validate_oncall_tracker_handoff.py",
+      "line": 813,
+      "col": 13,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/validate_oncall_tracker_handoff.py",
+      "line": 815,
+      "col": 18,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/validate_oncall_tracker_handoff.py",
+      "line": 819,
+      "col": 14,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/validate_oncall_tracker_handoff.py",
+      "line": 827,
+      "col": 14,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/validate_oncall_tracker_handoff.py",
+      "line": 833,
+      "col": 20,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/validate_oncall_tracker_handoff.py",
+      "line": 834,
+      "col": 22,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/validate_oncall_tracker_handoff.py",
+      "line": 835,
+      "col": 28,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/validate_oncall_tracker_handoff.py",
+      "line": 840,
+      "col": 20,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/validate_oncall_tracker_handoff.py",
+      "line": 841,
+      "col": 22,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/validate_oncall_tracker_handoff.py",
+      "line": 842,
+      "col": 28,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/validate_oncall_tracker_handoff.py",
+      "line": 1069,
+      "col": 24,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/validate_oncall_tracker_handoff.py",
+      "line": 1070,
+      "col": 25,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/validate_oncall_tracker_handoff.py",
+      "line": 1071,
+      "col": 30,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/validate_oncall_tracker_handoff.py",
+      "line": 1072,
+      "col": 22,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/validate_oncall_tracker_handoff.py",
+      "line": 1073,
+      "col": 29,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/verify_oncall_route_policy.py",
+      "line": 485,
+      "col": 14,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "env_read_outside_config",
+      "severity": "warn",
+      "path": "deploy/scripts/verify_oncall_route_policy.py",
+      "line": 493,
+      "col": 16,
+      "message": "os.environ access outside config/secret layer"
+    },
+    {
+      "rule": "hardcoded_url",
+      "severity": "warn",
+      "path": "server/fund/routers/investor_verification.py",
+      "line": 297,
+      "col": 33,
+      "message": "hardcoded URL host 'withpersona.com'; promote to Settings"
+    },
+    {
+      "rule": "hardcoded_url",
+      "severity": "warn",
+      "path": "server/fund/routers/investor_verification.py",
+      "line": 299,
+      "col": 33,
+      "message": "hardcoded URL host 'onfido.com'; promote to Settings"
+    },
+    {
+      "rule": "print_in_runtime_code",
+      "severity": "warn",
+      "path": "server/fund/scoring_worker.py",
+      "line": 188,
+      "col": 8,
+      "message": "print(...) in runtime code; use the logger instead"
+    },
+    {
+      "rule": "print_in_runtime_code",
+      "severity": "warn",
+      "path": "server/fund/scoring_worker.py",
+      "line": 317,
+      "col": 8,
+      "message": "print(...) in runtime code; use the logger instead"
+    },
+    {
+      "rule": "hardcoded_url",
+      "severity": "warn",
+      "path": "server/fund/services/accredited_backends.py",
+      "line": 259,
+      "col": 35,
+      "message": "hardcoded URL host 'withpersona.com'; promote to Settings"
+    },
+    {
+      "rule": "hardcoded_url",
+      "severity": "warn",
+      "path": "server/fund/services/accredited_backends.py",
+      "line": 328,
+      "col": 35,
+      "message": "hardcoded URL host 'onfido.com'; promote to Settings"
+    },
+    {
+      "rule": "hardcoded_url",
+      "severity": "warn",
+      "path": "server/fund/services/alert_routing.py",
+      "line": 39,
+      "col": 25,
+      "message": "hardcoded URL host 'events.pagerduty.com'; promote to Settings"
+    },
+    {
+      "rule": "hardcoded_url",
+      "severity": "warn",
+      "path": "server/fund/services/alert_routing.py",
+      "line": 40,
+      "col": 24,
+      "message": "hardcoded URL host 'api.opsgenie.com'; promote to Settings"
+    },
+    {
+      "rule": "hardcoded_url",
+      "severity": "warn",
+      "path": "server/fund/services/notification_backends.py",
+      "line": 353,
+      "col": 16,
+      "message": "hardcoded URL host 'api.sendgrid.com'; promote to Settings"
+    },
+    {
+      "rule": "hardcoded_url",
+      "severity": "warn",
+      "path": "server/fund/services/secret_backends.py",
+      "line": 82,
+      "col": 16,
+      "message": "hardcoded URL host 'api.doppler.com'; promote to Settings"
+    },
+    {
+      "rule": "hardcoded_url",
+      "severity": "warn",
+      "path": "server/fund/services/secret_manager.py",
+      "line": 238,
+      "col": 15,
+      "message": "hardcoded URL host 'secretmanager.googleapis.com'; promote to Settings"
+    },
+    {
+      "rule": "print_in_runtime_code",
+      "severity": "warn",
+      "path": "server/fund/worker.py",
+      "line": 45,
+      "col": 8,
+      "message": "print(...) in runtime code; use the logger instead"
+    },
+    {
+      "rule": "print_in_runtime_code",
+      "severity": "warn",
+      "path": "server/fund/worker.py",
+      "line": 53,
+      "col": 12,
+      "message": "print(...) in runtime code; use the logger instead"
+    },
+    {
+      "rule": "print_in_runtime_code",
+      "severity": "warn",
+      "path": "server/fund/worker_healthcheck.py",
+      "line": 74,
+      "col": 8,
+      "message": "print(...) in runtime code; use the logger instead"
+    },
+    {
+      "rule": "hardcoded_url",
+      "severity": "warn",
+      "path": "server/fund/workers/arq_worker.py",
+      "line": 122,
+      "col": 4,
+      "message": "hardcoded URL host 'arq-docs.helpmanual.io.'; promote to Settings"
+    }
+  ]
+}

@@ -120,7 +120,7 @@ class CoherenceScorer:
                     name=weight_keys[i],
                     score=0.5,
                     weight=weights[weight_keys[i]],
-                    warnings=[f"Layer failed: {str(e)}"]
+                    warnings=[f"Layer failed: {e!s}"]
                 ))
 
             layer_elapsed = time.time() - layer_start
@@ -130,7 +130,7 @@ class CoherenceScorer:
                 f"(weight={results[-1].weight:.2f}) in {layer_elapsed:.3f}s"
             )
 
-        self._verbose(f"Running cross-layer signal fusion...")
+        self._verbose("Running cross-layer signal fusion...")
         self._apply_fusion(results)
 
         raw_composite = sum(r.score * r.weight for r in results)

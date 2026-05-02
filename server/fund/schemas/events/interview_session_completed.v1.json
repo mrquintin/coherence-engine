@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coherence-engine/events/interview_session_completed/v1",
+  "title": "InterviewSessionCompletedV1",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_name",
+    "schema_version",
+    "occurred_at",
+    "application_id",
+    "session_id",
+    "channel",
+    "topics",
+    "topics_covered",
+    "topics_total"
+  ],
+  "properties": {
+    "event_id": {"type": "string", "format": "uuid"},
+    "event_name": {"type": "string", "const": "interview_session_completed"},
+    "schema_version": {"type": "integer", "const": 1},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "application_id": {"type": "string", "minLength": 1},
+    "session_id": {"type": "string", "minLength": 1},
+    "channel": {"type": "string", "enum": ["voice", "web", "manual"]},
+    "topics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["topic_id", "status"],
+        "properties": {
+          "topic_id": {"type": "string", "minLength": 1},
+          "status": {"type": "string", "enum": ["recorded", "skipped", "failed"]},
+          "recording_uri": {"type": "string", "minLength": 1},
+          "recording_sha256": {"type": "string", "minLength": 64, "maxLength": 64},
+          "duration_seconds": {"type": "number", "minimum": 0}
+        },
+        "additionalProperties": false
+      }
+    },
+    "topics_covered": {"type": "integer", "minimum": 0},
+    "topics_total": {"type": "integer", "minimum": 1},
+    "duration_seconds": {"type": "number", "minimum": 0},
+    "provider_call_sid": {"type": "string", "minLength": 1}
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "event_id": "11111111-1111-4111-8111-111111111111",
+      "event_name": "interview_session_completed",
+      "schema_version": 1,
+      "occurred_at": "2026-04-25T12:00:00Z",
+      "application_id": "app_abc123",
+      "session_id": "ivw_voice_abc",
+      "channel": "voice",
+      "topics_covered": 2,
+      "topics_total": 2,
+      "topics": [
+        {
+          "topic_id": "interview_opening",
+          "status": "recorded",
+          "recording_uri": "coh://local/default/interviews/app_abc123/ivw_voice_abc/interview_opening.wav",
+          "recording_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "duration_seconds": 60.0
+        },
+        {
+          "topic_id": "self_critique",
+          "status": "recorded",
+          "recording_uri": "coh://local/default/interviews/app_abc123/ivw_voice_abc/self_critique.wav",
+          "recording_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "duration_seconds": 90.0
+        }
+      ]
+    }
+  ]
+}

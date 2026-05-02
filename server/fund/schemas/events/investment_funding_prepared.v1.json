@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coherence-engine/events/investment_funding_prepared/v1",
+  "title": "InvestmentFundingPreparedV1",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_name",
+    "schema_version",
+    "occurred_at",
+    "instruction_id",
+    "application_id",
+    "founder_id",
+    "amount_usd",
+    "currency",
+    "preparation_method",
+    "target_account_ref"
+  ],
+  "properties": {
+    "event_id": {"type": "string", "format": "uuid"},
+    "event_name": {"type": "string", "const": "investment_funding_prepared"},
+    "schema_version": {"type": "integer", "const": 1},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "instruction_id": {"type": "string", "minLength": 1},
+    "application_id": {"type": "string", "minLength": 1},
+    "founder_id": {"type": "string", "minLength": 1},
+    "amount_usd": {"type": "integer", "minimum": 1},
+    "currency": {"type": "string", "minLength": 3, "maxLength": 8},
+    "preparation_method": {"type": "string", "enum": ["stripe", "bank_transfer"]},
+    "target_account_ref": {"type": "string", "minLength": 1},
+    "provider_intent_ref": {"type": "string"},
+    "prepared_by": {"type": "string"}
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "event_id": "11111111-1111-4111-8111-111111111111",
+      "event_name": "investment_funding_prepared",
+      "schema_version": 1,
+      "occurred_at": "2026-04-25T12:00:00Z",
+      "instruction_id": "ins_abc123",
+      "application_id": "app_abc123",
+      "founder_id": "fnd_abc123",
+      "amount_usd": 100000,
+      "currency": "USD",
+      "preparation_method": "bank_transfer",
+      "target_account_ref": "cp_mercury_xyz",
+      "provider_intent_ref": "pmt_intent_aaaa",
+      "prepared_by": "partner:alice"
+    }
+  ]
+}
