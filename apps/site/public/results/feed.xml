@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Validation results RSS feed.
+
+  This file is the at-rest template; scripts/render_study_to_mdx.py
+  rewrites it deterministically each time a study is rendered, with
+  one <item> per study sorted by published_at descending. Until the
+  first study is rendered the channel is empty by design — the feed
+  is still valid RSS 2.0.
+-->
+<rss version="2.0">
+  <channel>
+    <title>Coherence Engine — Validation results</title>
+    <link>https://coherence.example.com/results/</link>
+    <description>Pre-registered out-of-sample validation studies. Negative findings are published with the same prominence as positive ones.</description>
+    <language>en-us</language>
+  </channel>
+</rss>

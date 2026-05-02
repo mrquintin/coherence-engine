@@ -1,0 +1,90 @@
+# Pre-registration document for the coherence-vs-outcome regression study
+# (prompt 44, Wave 12). The hypotheses, alpha levels, and stopping rule below
+# are *frozen* with respect to the study report — bumping any value requires a
+# new ``version:`` plus a ``justification:`` stanza explaining why the change
+# was made *before* re-looking at any new data. The study runner refuses to
+# emit a report when ``stopping_rule.minimum_n_with_known_outcome`` is not met.
+#
+# This file is parsed by server/fund/services/validation_study.py with a tiny
+# stdlib parser; the on-disk shape is restricted to scalars, lists, and one
+# level of mapping nesting. PyYAML is *not* a runtime dependency.
+
+version: "v1.0"
+study_name: "coherence-vs-survival-5yr-regression-v1"
+study_kind: "predictive_validity"
+
+primary_hypothesis:
+  id: "H1"
+  statement: >-
+    The coherence_score returned by the current production scorer is
+    positively associated with survival_5yr after controlling for
+    domain_primary and log(check_size_usd). We pre-register a one-sided
+    test of beta_coherence > 0.
+  test: "logit(survival_5yr) ~ coherence_score + domain_primary + log_check_size"
+  parameter_of_interest: "coherence_score"
+  direction: "positive"
+  alpha: 0.01
+  decision_rule: >-
+    Reject H0 (no association) when the bootstrap 99% CI for
+    beta_coherence excludes 0 *and* the lower bound is positive.
+
+secondary_hypotheses:
+  - id: "H2"
+    statement: >-
+      Survival rate is monotonically non-decreasing across coherence_score
+      quintiles. Tested by isotonic check on per-quintile realized rates.
+    test: "monotonic_dose_response"
+    alpha: 0.05
+    decision_rule: >-
+      Reject H0 when q5_rate > q1_rate by at least 0.05 absolute *and*
+      no quintile k satisfies q_k_rate < q_{k-1}_rate by more than 0.05.
+
+per_domain_models:
+  enabled: true
+  multiple_comparison_correction: "bonferroni"
+  family_alpha: 0.05
+  notes: >-
+    A logit is fit per domain_primary value with at least 30 known-outcome
+    rows. The per-domain alpha is 0.05 / k where k is the number of
+    fitted domain models. Domains below the threshold are reported in
+    ``insufficient_subgroups`` and excluded from the family.
+
+bootstrap:
+  iterations: 10000
+  resample_unit: "row"
+  rng: "deterministic_stdlib"
+  seed_field: "config.seed"
+  notes: >-
+    Bootstrap resamples are drawn with replacement using a stdlib
+    random.Random seeded from config.seed. Same seed + same data hash =
+    byte-identical report. If numpy is available the runner records the
+    fact in generated_with but the resampling itself remains stdlib.
+
+stopping_rule:
+  minimum_n_with_known_outcome: 200
+  on_violation: "raise INSUFFICIENT_SAMPLE; do not emit a report"
+  rationale: >-
+    Below 200 known-outcome rows the regression has neither the power to
+    detect a meaningful effect nor the granularity to support 5-bin
+    quintile dose-response. Publishing under-powered studies inflates the
+    file-drawer problem we are explicitly trying to avoid.
+
+negative_results_policy:
+  publish_when_null: true
+  publish_when_wrong_sign: true
+  notes: >-
+    The harness emits the same report shape regardless of which way the
+    coefficient lands. A negative or null result is not a failure; it is
+    an answer.
+
+scope_boundary:
+  claim_kind: "prediction"
+  not_claim_kind: "causation"
+  notes: >-
+    coherence_score is a screening signal. A positive association does
+    NOT establish that improving coherence causes higher survival; it
+    establishes that coherence carries non-trivial predictive
+    information for outcomes after controlling for domain and check
+    size.
+
+amendments: []

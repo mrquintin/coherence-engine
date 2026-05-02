@@ -1,0 +1,133 @@
+{
+  "schema_version": "migration-registry-v1",
+  "audited_at": "2026-04-25T16:00:00-05:00",
+  "revisions": [
+    {
+      "revision": "20260408_000001",
+      "file": "alembic/versions/20260408_000001_create_fund_backend_tables.py",
+      "postgres_compatible": true,
+      "sqlite_compatible": true,
+      "warnings": [
+        {
+          "code": "boolean_no_server_default",
+          "message": "sa.Boolean column 'dry_run' is NOT NULL with no server_default \u2014 Postgres ALTER TABLE ADD COLUMN against a populated table will fail.",
+          "lineno": 70
+        }
+      ],
+      "errors": []
+    },
+    {
+      "revision": "20260409_000002",
+      "file": "alembic/versions/20260409_000002_scoring_queue_and_artifact_fields.py",
+      "postgres_compatible": true,
+      "sqlite_compatible": true,
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "revision": "20260409_000003",
+      "file": "alembic/versions/20260409_000003_api_keys_and_audit.py",
+      "postgres_compatible": true,
+      "sqlite_compatible": true,
+      "warnings": [
+        {
+          "code": "boolean_no_server_default",
+          "message": "sa.Boolean column 'is_active' is NOT NULL with no server_default \u2014 Postgres ALTER TABLE ADD COLUMN against a populated table will fail.",
+          "lineno": 28
+        },
+        {
+          "code": "boolean_no_server_default",
+          "message": "sa.Boolean column 'success' is NOT NULL with no server_default \u2014 Postgres ALTER TABLE ADD COLUMN against a populated table will fail.",
+          "lineno": 48
+        }
+      ],
+      "errors": []
+    },
+    {
+      "revision": "20260409_000004",
+      "file": "alembic/versions/20260409_000004_worker_reliability_fields.py",
+      "postgres_compatible": true,
+      "sqlite_compatible": true,
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "revision": "20260417_000001",
+      "file": "alembic/versions/20260417_000001_decision_policy_version.py",
+      "postgres_compatible": true,
+      "sqlite_compatible": true,
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "revision": "20260417_000002",
+      "file": "alembic/versions/20260417_000002_artifact_kind.py",
+      "postgres_compatible": true,
+      "sqlite_compatible": true,
+      "warnings": [
+        {
+          "code": "sqlite_only_pattern_batch_alter_table",
+          "message": "op.batch_alter_table is required for SQLite but redundant on Postgres. Recorded for prompt 24 \u2014 not a defect.",
+          "lineno": 85
+        },
+        {
+          "code": "sqlite_only_pattern_batch_alter_table",
+          "message": "op.batch_alter_table is required for SQLite but redundant on Postgres. Recorded for prompt 24 \u2014 not a defect.",
+          "lineno": 99
+        },
+        {
+          "code": "sqlite_only_pattern_batch_alter_table",
+          "message": "op.batch_alter_table is required for SQLite but redundant on Postgres. Recorded for prompt 24 \u2014 not a defect.",
+          "lineno": 112
+        }
+      ],
+      "errors": []
+    },
+    {
+      "revision": "20260417_000003",
+      "file": "alembic/versions/20260417_000003_portfolio_state.py",
+      "postgres_compatible": true,
+      "sqlite_compatible": true,
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "revision": "20260417_000004",
+      "file": "alembic/versions/20260417_000004_scoring_mode.py",
+      "postgres_compatible": true,
+      "sqlite_compatible": true,
+      "warnings": [
+        {
+          "code": "sqlite_only_pattern_batch_alter_table",
+          "message": "op.batch_alter_table is required for SQLite but redundant on Postgres. Recorded for prompt 24 \u2014 not a defect.",
+          "lineno": 63
+        }
+      ],
+      "errors": []
+    },
+    {
+      "revision": "20260417_000005",
+      "file": "alembic/versions/20260417_000005_notification_log.py",
+      "postgres_compatible": true,
+      "sqlite_compatible": true,
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "revision": "20260417_000006",
+      "file": "alembic/versions/20260417_000006_workflow_checkpoints.py",
+      "postgres_compatible": true,
+      "sqlite_compatible": true,
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "revision": "20260425_000001",
+      "file": "alembic/versions/20260425_000001_rls_policies.py",
+      "postgres_compatible": true,
+      "sqlite_compatible": true,
+      "warnings": [],
+      "errors": []
+    }
+  ]
+}

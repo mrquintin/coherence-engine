@@ -103,7 +103,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev,fund-workers]"
+          python -m pip install -e ".[dev,fund-api,fund-workers]"
 
       - name: Configure AWS credentials (optional OIDC)
         if: ${{ inputs.environment_profile == 'aws' && inputs.aws_role_to_assume != '' }}
@@ -209,4 +209,3 @@ jobs:
         run: |
           echo "Secret-manager preflight gate passed for profile=${{ inputs.environment_profile }}."
           echo "Place release/deploy commands after this gate in your pipeline."
-

@@ -14,7 +14,8 @@ from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from coherence_engine.server.fund import models
-from coherence_engine.server.fund.database import SessionLocal
+from coherence_engine.server.fund.config import settings
+from coherence_engine.server.fund.database import SessionLocal, retry_transient_db_errors
 from coherence_engine.server.fund.repositories.application_repository import ApplicationRepository
 from coherence_engine.server.fund.services.application_service import ApplicationService
 from coherence_engine.server.fund.services.event_publisher import EventPublisher
@@ -115,7 +116,7 @@ def _scoring_warn_tags(metrics: dict) -> List[str]:
     return tags
 
 
-def emit_scoring_ops_snapshot(db: Session, tick_result: dict | None = None) -> None:
+def emit_scoring_ops_snapshot(db: Session, tick_result: dict | None = None) -> dict:
     metrics = collect_scoring_ops_metrics(db)
     warn_tags = _scoring_warn_tags(metrics)
     payload = {
@@ -129,6 +130,55 @@ def emit_scoring_ops_snapshot(db: Session, tick_result: dict | None = None) -> N
         "warn": warn_tags,
     }
     emit_worker_ops_snapshot(_LOG, warn_tags=warn_tags, payload=payload)
+    return payload
+
+
+def _retry_decorator():
+    """Build a retry decorator using current settings."""
+    return retry_transient_db_errors(
+        max_attempts=settings.DB_RETRY_MAX_ATTEMPTS,
+        base_delay_ms=settings.DB_RETRY_BASE_DELAY_MS,
+        max_delay_ms=settings.DB_RETRY_MAX_DELAY_MS,
+        logger=_LOG,
+    )
+
+
+@_retry_decorator()
+def claim_next_job(
+    repository: ApplicationRepository,
+    *,
+    worker_id: str = "scoring-worker",
+    lease_seconds: int = 120,
+):
+    """Claim the next eligible scoring job, retrying transient DB errors.
+
+    Wraps :meth:`ApplicationRepository.claim_next_scoring_job`. Logic-bug
+    errors (``IntegrityError`` / ``DataError``) are NOT retried.
+    """
+    return repository.claim_next_scoring_job(
+        worker_id=worker_id, lease_seconds=lease_seconds
+    )
+
+
+@_retry_decorator()
+def mark_job_completed(repository: ApplicationRepository, job_id: str) -> None:
+    """Mark a scoring job completed, retrying transient DB errors."""
+    repository.mark_scoring_job_completed(job_id)
+
+
+def _wrap_repository_with_retry(repo: ApplicationRepository) -> ApplicationRepository:
+    """Per-instance monkey-patch so the service's internal job-claim and
+    job-finish calls inherit the same retry budget the worker uses.
+
+    The service holds the repository by reference; rebinding the methods
+    on the instance is the lightest-touch way to make every call
+    originating from the worker pass through the retry decorator without
+    spreading the decorator across the service surface.
+    """
+    deco = _retry_decorator()
+    repo.claim_next_scoring_job = deco(repo.claim_next_scoring_job)  # type: ignore[method-assign]
+    repo.mark_scoring_job_completed = deco(repo.mark_scoring_job_completed)  # type: ignore[method-assign]
+    return repo
 
 
 def db_healthcheck() -> int:
@@ -141,6 +191,51 @@ def db_healthcheck() -> int:
     finally:
         db.close()
     return 0
+
+
+def run_scoring_job(
+    application_id: str,
+    *,
+    worker_id: str | None = None,
+    lease_seconds: int = 120,
+    retry_base_seconds: int = 5,
+    db: Session | None = None,
+) -> dict:
+    """Process exactly one scoring job for ``application_id``.
+
+    Pure function shared by the polling worker and the Arq worker: both
+    call this to do the actual unit of scoring work. Claims the next
+    eligible job (the DB lease enforces single-flight), runs scoring,
+    writes the decision artifact, and emits outbox events.
+
+    Returns a result dict matching :meth:`ApplicationService
+    .process_next_scoring_job` plus an ``application_id`` echo. If no
+    job is currently eligible (already processed, or lease held by
+    another worker), returns ``{"status": "no_job", "application_id":
+    application_id}``.
+    """
+    owns_session = db is None
+    session = db or SessionLocal()
+    resolved_worker_id = worker_id or f"worker-{uuid.uuid4().hex[:8]}"
+    try:
+        service = ApplicationService(
+            repository=_wrap_repository_with_retry(ApplicationRepository(session)),
+            events=EventPublisher(session),
+        )
+        result = service.process_next_scoring_job(
+            worker_id=resolved_worker_id,
+            lease_seconds=lease_seconds,
+            retry_base_seconds=retry_base_seconds,
+        )
+        if owns_session:
+            session.commit()
+    finally:
+        if owns_session:
+            session.close()
+    if not result:
+        return {"status": "no_job", "application_id": application_id}
+    result.setdefault("application_id", application_id)
+    return result
 
 
 def process_once(
@@ -156,7 +251,7 @@ def process_once(
     resolved_worker_id = worker_id or f"worker-{uuid.uuid4().hex[:8]}"
     try:
         service = ApplicationService(
-            repository=ApplicationRepository(db),
+            repository=_wrap_repository_with_retry(ApplicationRepository(db)),
             events=EventPublisher(db),
         )
         for _ in range(max_jobs):

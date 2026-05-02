@@ -1,0 +1,70 @@
+name: founder_portal
+
+on:
+  pull_request:
+    paths:
+      - 'apps/founder_portal/**'
+      - 'docs/specs/openapi_v1.yaml'
+      - 'scripts/generate_ts_sdk.py'
+      - '.github/workflows/founder_portal.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/founder_portal/**'
+      - 'docs/specs/openapi_v1.yaml'
+      - 'scripts/generate_ts_sdk.py'
+      - '.github/workflows/founder_portal.yml'
+
+defaults:
+  run:
+    working-directory: apps/founder_portal
+
+jobs:
+  build:
+    name: lint + typecheck + next build + tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: http://localhost:3001
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: anon-key-stub-for-ci
+      BACKEND_API_URL: http://localhost:8000
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.12.0 --activate
+        working-directory: ${{ github.workspace }}
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('apps/founder_portal/package.json') }}
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type-check
+        run: pnpm tsc --noEmit
+
+      - name: next build
+        run: pnpm build
+
+      - name: Vitest
+        run: pnpm vitest run
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Playwright smoke
+        run: pnpm test:e2e

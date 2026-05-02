@@ -1,21 +1,53 @@
-"""Secret manager adapters for bootstrap auth and managed key rotation."""
+"""Secret manager adapters for bootstrap auth and managed key rotation.
+
+This module exposes two related but distinct surfaces:
+
+* The legacy :class:`ManagedSecretStore` ABC and its concrete adapters
+  (``AWSSecretsManager``, ``GCPSecretManager``, ``VaultKVv2SecretManager``)
+  used to read/write the bootstrap-admin token from a managed store.
+  The factory ``get_secret_manager()`` returns one of these.
+
+* The runtime :class:`SecretManager` resolver — a thin compositor over
+  pluggable :class:`~secret_backends.SecretBackend` implementations
+  (env, Doppler, Vault, Supabase Vault). The resolver consults a
+  declarative manifest (:mod:`secret_manifest`) at boot to verify
+  every ``prod_required`` secret can be obtained before the app
+  serves traffic.
+"""
 
 from __future__ import annotations
 
 import json
+import logging
 import os
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from typing import Optional
 
+from coherence_engine.server.fund.services.secret_backends import (
+    EnvBackend,
+    SecretBackend,
+    SecretBackendError,
+    build_backend,
+)
+from coherence_engine.server.fund.services.secret_manifest import (
+    ManifestReport,
+    MissingRequiredSecret,
+    ResolvedEntry,
+    SecretManifest,
+)
+
+
+_log = logging.getLogger(__name__)
+
 
 class SecretManagerError(RuntimeError):
     """Raised when secret manager operations fail."""
 
 
-class SecretManager:
-    """Provider interface for managed secret reads/writes."""
+class ManagedSecretStore:
+    """Provider interface for managed secret reads/writes (legacy)."""
 
     def get_secret(self, secret_ref: str) -> str:
         raise NotImplementedError()
@@ -167,7 +199,7 @@ def probe_secret_manager_reachability(secret_ref: str) -> dict:
     }
 
 
-class AWSSecretsManager(SecretManager):
+class AWSSecretsManager(ManagedSecretStore):
     """AWS Secrets Manager adapter."""
 
     def __init__(self):
@@ -196,7 +228,7 @@ class AWSSecretsManager(SecretManager):
             raise SecretManagerError(f"aws put secret failed: {exc}") from exc
 
 
-class GCPSecretManager(SecretManager):
+class GCPSecretManager(ManagedSecretStore):
     """GCP Secret Manager adapter via metadata + REST API."""
 
     TOKEN_URL = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
@@ -271,7 +303,7 @@ class GCPSecretManager(SecretManager):
         self._request("POST", url, {"payload": {"data": encoded}})
 
 
-class VaultKVv2SecretManager(SecretManager):
+class VaultKVv2SecretManager(ManagedSecretStore):
     """Vault KV v2 adapter."""
 
     def __init__(self):
@@ -335,7 +367,7 @@ class VaultKVv2SecretManager(SecretManager):
         self._request("POST", f"/v1/{mount}/data/{path}", body=body)
 
 
-def get_secret_manager() -> Optional[SecretManager]:
+def get_secret_manager() -> Optional[ManagedSecretStore]:
     validate_secret_manager_policy()
     provider = _provider()
     if provider in {"", "disabled", "none"}:
@@ -347,4 +379,171 @@ def get_secret_manager() -> Optional[SecretManager]:
     if provider == "vault":
         return VaultKVv2SecretManager()
     raise SecretManagerError(f"unsupported secret manager provider: {provider}")
+
+
+# ---------------------------------------------------------------------------
+# Runtime resolver (manifest-driven, pluggable backends).
+# ---------------------------------------------------------------------------
+
+
+def _runtime_env() -> str:
+    return os.getenv("COHERENCE_FUND_ENV", os.getenv("APP_ENV", "development")).strip().lower()
+
+
+def _primary_backend_name() -> str:
+    return os.getenv("SECRETS_BACKEND", "env").strip().lower()
+
+
+class SecretManager:
+    """Runtime secret resolver over pluggable backends.
+
+    Resolution order: ``primary`` first (configurable via the
+    ``SECRETS_BACKEND`` env var — one of ``env``, ``doppler``, ``vault``,
+    ``supabase_vault``), then ``EnvBackend`` as a fallback. Resolved
+    values are cached in-memory for the process lifetime; rotation is
+    handled by restart (documented in
+    ``docs/specs/secret_management.md``).
+
+    The resolver maintains an audit log of *which backend* resolved
+    each name (never the value itself) so operators can trace
+    surprising fallbacks. Secret values are never logged.
+    """
+
+    def __init__(
+        self,
+        *,
+        primary: Optional[SecretBackend] = None,
+        fallback: Optional[SecretBackend] = None,
+        manifest: Optional[SecretManifest] = None,
+    ) -> None:
+        self._primary: SecretBackend = primary if primary is not None else EnvBackend()
+        # If primary is already an EnvBackend, fallback is redundant.
+        if fallback is None and self._primary.name != "env":
+            fallback = EnvBackend()
+        self._fallback: Optional[SecretBackend] = fallback
+        self._manifest: Optional[SecretManifest] = manifest
+        self._cache: dict[str, str] = {}
+        self._resolution_log: list[tuple[str, str]] = []
+
+    # -- factories -------------------------------------------------------
+
+    @classmethod
+    def from_env(cls, *, manifest: Optional[SecretManifest] = None) -> "SecretManager":
+        """Build a resolver from environment configuration.
+
+        Reads ``SECRETS_BACKEND`` (default ``env``). On backend
+        construction failure, falls back to the env-only resolver and
+        logs a warning — startup should not crash because a remote
+        secret store is misconfigured; the manifest verification step
+        is the real gate.
+        """
+        primary_name = _primary_backend_name()
+        try:
+            primary = build_backend(primary_name)
+        except SecretBackendError as exc:
+            _log.warning(
+                "secrets: primary backend %r unavailable (%s); falling back to env",
+                primary_name,
+                exc,
+            )
+            primary = EnvBackend()
+        return cls(primary=primary, manifest=manifest)
+
+    # -- core resolution -------------------------------------------------
+
+    def get(self, name: str) -> Optional[str]:
+        """Return the resolved secret or ``None`` if no backend has it."""
+        cached = self._cache.get(name)
+        if cached is not None:
+            return cached
+        chain: list[SecretBackend] = [self._primary]
+        if self._fallback is not None and self._fallback is not self._primary:
+            chain.append(self._fallback)
+        for backend in chain:
+            try:
+                value = backend.get(name)
+            except SecretBackendError as exc:
+                _log.warning(
+                    "secrets: backend %r raised on %s (%s); trying next",
+                    backend.name,
+                    name,
+                    exc,
+                )
+                continue
+            if value is None:
+                continue
+            self._cache[name] = value
+            self._resolution_log.append((name, backend.name))
+            _log.info("secrets: resolved name=%s backend=%s", name, backend.name)
+            return value
+        return None
+
+    def resolution_log(self) -> list[tuple[str, str]]:
+        return list(self._resolution_log)
+
+    def manifest(self) -> SecretManifest:
+        if self._manifest is None:
+            self._manifest = SecretManifest.default()
+        return self._manifest
+
+    # -- manifest verification ------------------------------------------
+
+    def verify_manifest(self, env: Optional[str] = None) -> ManifestReport:
+        """Resolve every manifest entry and assemble a status report.
+
+        For ``env="production"``, raises :class:`MissingRequiredSecret`
+        if any ``prod_required`` entry could not be resolved. Other
+        environments produce the same report but never raise — useful
+        for dev/CI dashboards.
+        """
+        target_env = (env or _runtime_env()).strip().lower()
+        manifest = self.manifest()
+        entries: list[ResolvedEntry] = []
+        for entry in manifest.entries:
+            value = self.get(entry.name)
+            if value is None:
+                backend_name = None
+                status = "missing"
+            else:
+                # Last item in resolution log is the most recent (this entry).
+                backend_name = self._resolution_log[-1][1] if self._resolution_log else None
+                status = "resolved"
+            entries.append(
+                ResolvedEntry(
+                    name=entry.name,
+                    category=entry.category,
+                    policy=entry.policy,
+                    status=status,
+                    backend=backend_name,
+                    owner=entry.owner,
+                )
+            )
+        report = ManifestReport(
+            env=target_env,
+            schema_version=manifest.schema_version,
+            entries=tuple(entries),
+        )
+        if target_env == "production" and report.missing_required:
+            raise MissingRequiredSecret(report.missing_required)
+        return report
+
+
+_shared_resolver: Optional[SecretManager] = None
+
+
+def get_secret_resolver() -> SecretManager:
+    """Process-wide :class:`SecretManager` instance.
+
+    Constructed lazily from environment configuration. Tests can pass
+    a fresh instance to ``set_secret_resolver_for_tests``.
+    """
+    global _shared_resolver
+    if _shared_resolver is None:
+        _shared_resolver = SecretManager.from_env()
+    return _shared_resolver
+
+
+def set_secret_resolver_for_tests(resolver: Optional[SecretManager]) -> None:
+    global _shared_resolver
+    _shared_resolver = resolver
 

@@ -3,10 +3,10 @@
   "results": [
     {
       "check_id": "alembic_head",
-      "detail": "single alembic head resolved to 20260417_000006",
+      "detail": "single alembic head resolved to 20260425_000019",
       "evidence": {
         "heads": [
-          "20260417_000006"
+          "20260425_000019"
         ],
         "versions_files": [
           "20260408_000001_create_fund_backend_tables.py",
@@ -18,7 +18,26 @@
           "20260417_000003_portfolio_state.py",
           "20260417_000004_scoring_mode.py",
           "20260417_000005_notification_log.py",
-          "20260417_000006_workflow_checkpoints.py"
+          "20260417_000006_workflow_checkpoints.py",
+          "20260425_000001_rls_policies.py",
+          "20260425_000002_founder_user_id.py",
+          "20260425_000003_investor_verification.py",
+          "20260425_000004_service_accounts_and_api_keys_v2.py",
+          "20260425_000005_decision_overrides.py",
+          "20260425_000006_interview_recordings.py",
+          "20260425_000007_interview_chunks.py",
+          "20260425_000008_interview_session_state.py",
+          "20260425_000009_capital_deployment.py",
+          "20260425_000010_signature_requests.py",
+          "20260425_000011_founder_kyc.py",
+          "20260425_000012_scheduling.py",
+          "20260425_000013_regulatory_pathway.py",
+          "20260425_000014_retention_and_erasure.py",
+          "20260425_000015_pii_tokenization.py",
+          "20260425_000016_coi_registry.py",
+          "20260425_000017_cost_events.py",
+          "20260425_000018_cap_table.py",
+          "20260425_000019_policy_parameter_proposals.py"
         ]
       },
       "reason_code": null,
@@ -95,6 +114,15 @@
       "status": "pass"
     },
     {
+      "check_id": "migration_ci_gate",
+      "detail": "MIGRATION_GATE_PG_URL unset — gate skipped (CI runs the live cycle).",
+      "evidence": {
+        "configured": false
+      },
+      "reason_code": "migration_ci_gate_skipped",
+      "status": "pass"
+    },
+    {
       "check_id": "status_doc_prompt_recap",
       "detail": "COHERENCE_ENGINE_PROJECT_STATUS.txt references prompts 01-20",
       "evidence": {
@@ -163,7 +191,7 @@
   "summary": {
     "errors": 0,
     "failed": 0,
-    "passed": 10,
-    "total": 10
+    "passed": 11,
+    "total": 11
   }
 }

@@ -1,0 +1,28 @@
+{
+  "company_name": "anon_950b015f9c2a9f14",
+  "country": "GB",
+  "deck_uri": "coh://local/historical-corpus/seeds/0bb1b42f-c1b5-77bd-86bc-8662dfa3377e/deck.pdf",
+  "domain_primary": "healthtech",
+  "eligibility": {
+    "consent_documented": true,
+    "date_window_ok": false,
+    "evidence_floor_ok": true,
+    "no_training_overlap_ok": true
+  },
+  "evidence_floor": {
+    "n_metrics_cited": 9,
+    "n_propositions": 22,
+    "n_sources_cited": 7
+  },
+  "memo_uri": "coh://local/historical-corpus/seeds/0bb1b42f-c1b5-77bd-86bc-8662dfa3377e/memo.md",
+  "pitch_id": "0bb1b42f-c1b5-77bd-86bc-8662dfa3377e",
+  "pitch_year": 2029,
+  "provenance": {
+    "consent_documented": true,
+    "ingested_at": "2026-04-25T00:00:00+00:00",
+    "ingestion_run_id": "ing_seed00000000seed",
+    "source": "synthetic"
+  },
+  "schema_version": "1",
+  "transcript_uri": "coh://local/historical-corpus/seeds/0bb1b42f-c1b5-77bd-86bc-8662dfa3377e/transcript.txt"
+}

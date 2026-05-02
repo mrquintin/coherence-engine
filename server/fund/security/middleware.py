@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import secrets
+import sys
 import threading
 import time
 from collections import deque
@@ -114,7 +115,9 @@ def _bootstrap_admin_token() -> Optional[str]:
     if not secret_ref:
         return None
     try:
-        manager = get_secret_manager()
+        security_package = sys.modules.get("coherence_engine.server.fund.security")
+        resolver = getattr(security_package, "get_secret_manager", get_secret_manager)
+        manager = resolver()
         if manager is None:
             return None
         token = manager.get_secret(secret_ref).strip()
@@ -322,4 +325,3 @@ def enforce_roles(request: Request, allowed_roles: Tuple[str, ...]) -> Optional[
         )
         return _error_json(request, 403, "FORBIDDEN", "insufficient role permissions")
     return None
-

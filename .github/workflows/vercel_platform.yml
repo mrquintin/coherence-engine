@@ -1,0 +1,158 @@
+name: vercel_platform
+
+on:
+  workflow_dispatch:
+    inputs:
+      surface:
+        description: "Surface to deploy"
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - site
+          - founder_portal
+          - partner_dashboard
+          - lp_portal
+          - fund_api
+      target:
+        description: "Vercel deployment target"
+        required: true
+        default: preview
+        type: choice
+        options:
+          - preview
+          - production
+
+jobs:
+  deploy:
+    name: deploy ${{ matrix.surface }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - surface: site
+            project_secret: VERCEL_PROJECT_ID_site
+            cwd: apps/site
+            local_config: vercel.json
+          - surface: founder_portal
+            project_secret: VERCEL_PROJECT_ID_founder_portal
+            cwd: apps/founder_portal
+            local_config: vercel.json
+          - surface: partner_dashboard
+            project_secret: VERCEL_PROJECT_ID_partner_dashboard
+            cwd: apps/partner_dashboard
+            local_config: vercel.json
+          - surface: lp_portal
+            project_secret: VERCEL_PROJECT_ID_lp_portal
+            cwd: apps/lp_portal
+            local_config: vercel.json
+          - surface: fund_api
+            project_secret: VERCEL_PROJECT_ID_fund_api
+            cwd: .
+            local_config: vercel.json
+    environment:
+      name: ${{ inputs.target == 'production' && 'production' || 'preview' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: actions/setup-python@v5
+        if: matrix.surface == 'fund_api'
+        with:
+          python-version: "3.13"
+
+      - name: Install Vercel Python build runtime
+        if: matrix.surface == 'fund_api'
+        run: python -m pip install --upgrade uv
+
+      - name: Resolve Vercel secrets
+        id: gate
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
+        run: |
+          if [ "${{ inputs.surface }}" != "all" ] && [ "${{ inputs.surface }}" != "${{ matrix.surface }}" ]; then
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            echo "Skipping ${{ matrix.surface }} for requested surface=${{ inputs.surface }}."
+            exit 0
+          fi
+          if [ -z "${VERCEL_TOKEN}" ] || [ -z "${VERCEL_ORG_ID}" ] || [ -z "${VERCEL_PROJECT_ID}" ]; then
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            echo "Missing Vercel token/org/project secret for ${{ matrix.surface }}; skipping." >&2
+            exit 0
+          fi
+          echo "configured=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Pull Vercel project settings
+        if: steps.gate.outputs.configured == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
+        run: |
+          npx --yes vercel@50.28.0 pull --yes \
+            --environment="${{ inputs.target }}" \
+            --cwd="${{ matrix.cwd }}" \
+            --local-config="${{ matrix.local_config }}" \
+            --token="${VERCEL_TOKEN}"
+
+      - name: Build
+        if: steps.gate.outputs.configured == 'true' && matrix.surface != 'fund_api'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
+        run: |
+          PROD_FLAG=""
+          if [ "${{ inputs.target }}" = "production" ]; then
+            PROD_FLAG="--prod"
+          fi
+          npx --yes vercel@50.28.0 build ${PROD_FLAG} \
+            --cwd="${{ matrix.cwd }}" \
+            --local-config="${{ matrix.local_config }}" \
+            --token="${VERCEL_TOKEN}"
+
+      - name: Deploy prebuilt
+        id: deploy
+        if: steps.gate.outputs.configured == 'true' && matrix.surface != 'fund_api'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
+        run: |
+          PROD_FLAG=""
+          if [ "${{ inputs.target }}" = "production" ]; then
+            PROD_FLAG="--prod"
+          fi
+          url="$(npx --yes vercel@50.28.0 deploy --prebuilt ${PROD_FLAG} \
+            --cwd="${{ matrix.cwd }}" \
+            --local-config="${{ matrix.local_config }}" \
+            --token="${VERCEL_TOKEN}")"
+          echo "url=${url}" >> "${GITHUB_OUTPUT}"
+          echo "${url}"
+
+      - name: Deploy API source
+        id: deploy_api
+        if: steps.gate.outputs.configured == 'true' && matrix.surface == 'fund_api'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
+        run: |
+          PROD_FLAG=""
+          if [ "${{ inputs.target }}" = "production" ]; then
+            PROD_FLAG="--prod"
+          fi
+          url="$(npx --yes vercel@50.28.0 deploy ${PROD_FLAG} \
+            --cwd="${{ matrix.cwd }}" \
+            --local-config="${{ matrix.local_config }}" \
+            --token="${VERCEL_TOKEN}")"
+          echo "url=${url}" >> "${GITHUB_OUTPUT}"
+          echo "${url}"

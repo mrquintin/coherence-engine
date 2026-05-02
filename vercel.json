@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "fastapi",
+  "installCommand": "python -m pip install --upgrade pip && python -m pip install \".[fund-api]\"",
+  "buildCommand": "python -m compileall app.py server core domain layers embeddings -q",
+  "crons": [
+    {
+      "path": "/api/v1/worker/scoring/process-once",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}

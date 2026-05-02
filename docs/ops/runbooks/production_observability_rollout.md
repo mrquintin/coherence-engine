@@ -154,13 +154,13 @@ Align **secret manager** and **ops alert** variables with your environment; temp
 
 | Concern | systemd | Kubernetes ConfigMap | Helm values |
 |---------|---------|----------------------|-------------|
-| Provider choice | `COHERENCE_FUND_SECRET_MANAGER_PROVIDER` + `COHERENCE_FUND_AWS_REGION` / GCP token / Vault addr | Same keys in `deploy/k8s/configmap-env-template.yaml` | `env` + `secretEnv` in `deploy/helm/coherence-fund/values*.yaml` |
+| Provider choice | `COHERENCE_FUND_SECRET_MANAGER_PROVIDER` + `COHERENCE_FUND_AWS_REGION` / GCP token / Vault addr | Same keys in `deploy/k8s/base/configmap-env-template.yaml` | `env` + `secretEnv` in `deploy/helm/coherence-fund/values*.yaml` |
 | AWS | `COHERENCE_FUND_AWS_REGION` | same | same |
 | GCP | `COHERENCE_FUND_GCP_ACCESS_TOKEN` (automation only; prefer WIF on host) | inject via Secret for Jobs if needed | workload identity on service account |
-| Vault | `COHERENCE_FUND_VAULT_ADDR`, `COHERENCE_FUND_VAULT_TOKEN` or `_TOKEN_FILE` | `secret-template.yaml` | `secretEnv` |
+| Vault | `COHERENCE_FUND_VAULT_ADDR`, `COHERENCE_FUND_VAULT_TOKEN` or `_TOKEN_FILE` | `base/secret-template.yaml` | `secretEnv` |
 | In-process worker ops alerts | `COHERENCE_FUND_OPS_ALERT_ROUTER_MODE`, `COHERENCE_FUND_OPS_ALERT_FILE_PATH` or `COHERENCE_FUND_OPS_ALERT_WEBHOOK_URL` / `_TOKEN` | Prefer **Secret** for webhook URL/token | Use Kubernetes Secret references for webhooks in production |
 
-See `deploy/systemd/coherence-fund.env.example`, `deploy/k8s/configmap-env-template.yaml`, and `deploy/README.md` for the full lists.
+See `deploy/systemd/coherence-fund.env.example`, `deploy/k8s/base/configmap-env-template.yaml`, and `deploy/README.md` for the full lists.
 
 ## Rollback
 

@@ -20,14 +20,14 @@ This bundle deploys:
 
 ## Configure
 
-1. Edit `secret-template.yaml` with real values.
-2. Edit `configmap-env-template.yaml` to select backend:
+1. Edit `base/secret-template.yaml` with real values.
+2. Edit `base/configmap-env-template.yaml` to select backend:
    - `COHERENCE_FUND_OUTBOX_BACKEND=kafka|sqs|redis`
 3. Replace image references in:
-   - `api-deployment.yaml`
-   - `worker-deployment.yaml`
-   - `scoring-worker-deployment.yaml`
-   - `migrate-job.yaml`
+   - `base/api-deployment.yaml`
+   - `base/worker-deployment.yaml`
+   - `base/scoring-worker-deployment.yaml`
+   - `base/migrate-job.yaml`
 
 ## Deploy
 
@@ -113,5 +113,4 @@ See `docs/ops/runbooks/production_observability_rollout.md` and `docs/ops/slo_th
 
 ## Recurring route verification (CI)
 
-`configmap-env-template.yaml` documents which variables belong in ConfigMap vs Secret (webhook URLs for `COHERENCE_FUND_OPS_ALERT_*` must not live in ConfigMap). Repository workflow `.github/workflows/oncall-route-verification.yml` validates templates, example on-call policy JSON, and alert routing weekly without external dependencies; download **`oncall-release-readiness`** artifacts for verification JSON and drill evidence. Per-environment PagerDuty/Opsgenie/Alertmanager mapping template: `deploy/ops/oncall-route-policy.example.json`.
-
+`base/configmap-env-template.yaml` documents which variables belong in ConfigMap vs Secret (webhook URLs for `COHERENCE_FUND_OPS_ALERT_*` must not live in ConfigMap). Repository workflow `.github/workflows/oncall-route-verification.yml` validates templates, example on-call policy JSON, and alert routing weekly without external dependencies; download **`oncall-release-readiness`** artifacts for verification JSON and drill evidence. Per-environment PagerDuty/Opsgenie/Alertmanager mapping template: `deploy/ops/oncall-route-policy.example.json`.

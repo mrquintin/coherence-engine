@@ -29,4 +29,3 @@ jobs:
       check_kind: baseline_verify
       governance_environment_slug: uncertainty-governance-baseline-verification
     secrets: inherit
-    environment: uncertainty-governance-baseline-verification

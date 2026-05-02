@@ -1,0 +1,82 @@
+---
+import BaseLayout from '~/layouts/BaseLayout.astro';
+import CaveatBanner from '~/components/CaveatBanner.astro';
+
+// Pull every rendered study MDX. We use `import.meta.glob` rather than a
+// content collection so the renderer (scripts/render_study_to_mdx.py) can
+// own the directory without having to touch src/content/config.ts.
+const modules = import.meta.glob('../../content/results/*.mdx', { eager: true });
+type StudyFrontmatter = {
+  title: string;
+  published_at: string;
+  version: string;
+  n_pitches: number;
+  domain_count: number;
+  headline: string;
+  rejected_null?: boolean;
+  data_hash?: string;
+  leakage_audit_digest?: string;
+  schema_version?: string;
+};
+type StudyEntry = { slug: string; frontmatter: StudyFrontmatter };
+
+function slugFromPath(path: string): string {
+  const m = path.match(/([^/]+)\.mdx$/);
+  return m ? m[1] : path;
+}
+
+const studies: StudyEntry[] = Object.entries(modules)
+  .map(([path, mod]) => {
+    const fm = (mod as { frontmatter: StudyFrontmatter }).frontmatter;
+    return { slug: slugFromPath(path), frontmatter: fm };
+  })
+  .sort((a, b) => Date.parse(b.frontmatter.published_at) - Date.parse(a.frontmatter.published_at));
+---
+<BaseLayout
+  title="Validation results — Coherence Engine"
+  description="Pre-registered out-of-sample validation studies. Negative findings are published with the same prominence as positive ones."
+>
+  <section class="prose">
+    <p class="text-sm uppercase tracking-wide text-muted not-prose">Results</p>
+    <h1 class="mt-2">Validation studies</h1>
+    <p>
+      Each entry below is the rendered output of one pre-registered out-of-sample
+      validation study. Hypotheses, alpha levels, and stopping rules were locked
+      into the pre-registration document <em>before</em> any outcome data was
+      unblinded. Negative or null findings are published with the same prominence
+      as positive ones; see the linked report for the full result.
+    </p>
+    <p>
+      The latest study is always available at <a href="/results/latest">/results/latest</a>;
+      an RSS feed of study revisions is at <a href="/results/feed.xml">/results/feed.xml</a>.
+    </p>
+  </section>
+  <CaveatBanner />
+  {studies.length === 0 ? (
+    <section class="prose mt-8">
+      <p class="text-muted">
+        No study has been rendered yet. The renderer
+        (<code>scripts/render_study_to_mdx.py</code>) writes one MDX file per
+        canonical study report; this page lists them automatically once they
+        land.
+      </p>
+    </section>
+  ) : (
+    <ul class="not-prose mt-8 space-y-6">
+      {studies.map((study) => (
+        <li class="border-b border-ink/10 pb-6">
+          <p class="text-xs uppercase tracking-wide text-muted">
+            {study.frontmatter.rejected_null ? 'rejected H0' : 'did not reject H0'} ·
+            {' '}{study.frontmatter.published_at} ·
+            {' '}N={study.frontmatter.n_pitches} ·
+            {' '}{study.frontmatter.domain_count} domains
+          </p>
+          <h2 class="mt-1 text-xl font-semibold">
+            <a href={`/results/${study.slug}`} class="no-underline hover:underline">{study.frontmatter.title}</a>
+          </h2>
+          <p class="mt-1 text-sm text-muted">{study.frontmatter.headline}</p>
+        </li>
+      ))}
+    </ul>
+  )}
+</BaseLayout>

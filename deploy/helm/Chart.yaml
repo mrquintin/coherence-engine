@@ -1,0 +1,21 @@
+apiVersion: v2
+name: coherence-engine
+description: Umbrella chart that wraps coherence-fund (backend + workers) and exposes pipeline-level helm hooks (prompt 67).
+type: application
+version: 0.1.0
+appVersion: "0.1.7"
+kubeVersion: ">=1.27.0-0"
+dependencies:
+  - name: coherence-fund
+    version: "0.1.0"
+    repository: "file://./coherence-fund"
+maintainers:
+  - name: Coherence Engine
+icon: https://avatars.githubusercontent.com/u/0
+keywords:
+  - coherence
+  - fund
+  - decision
+annotations:
+  artifacthub.io/license: MIT
+  artifacthub.io/category: applications

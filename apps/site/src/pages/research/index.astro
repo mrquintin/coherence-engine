@@ -1,0 +1,38 @@
+---
+import BaseLayout from '~/layouts/BaseLayout.astro';
+import { getPublishedResearchPapers } from '~/lib/research';
+
+const papers = getPublishedResearchPapers();
+---
+<BaseLayout
+  title="Research — Coherence Engine"
+  description="Index of public research papers from the Coherence Engine program. All claims are exploratory; predictive validity is unproven."
+  rss
+>
+  <section class="prose">
+    <p class="text-sm uppercase tracking-wide text-muted not-prose">Research</p>
+    <h1 class="mt-2">Papers</h1>
+    <p>
+      Working papers from the Coherence Engine research program. Every paper carries a
+      "predictive validity unproven" caveat &mdash; results here are reported honestly, including
+      the ones we cannot yet defend.
+    </p>
+  </section>
+
+  <ul class="not-prose mt-8 space-y-6">
+    {papers.map((paper) => (
+      <li class="border-b border-ink/10 pb-6">
+        <p class="text-xs uppercase tracking-wide text-muted">
+          {paper.data.status} · {paper.data.published}
+        </p>
+        <h2 class="mt-1 text-xl font-semibold">
+          <a href={`/research/${paper.slug}`} class="no-underline hover:underline">{paper.data.title}</a>
+        </h2>
+        <p class="mt-1 text-sm text-muted">{paper.data.summary}</p>
+        {paper.data.tags.length > 0 && (
+          <p class="mt-2 text-xs text-muted">tags: {paper.data.tags.join(', ')}</p>
+        )}
+      </li>
+    ))}
+  </ul>
+</BaseLayout>

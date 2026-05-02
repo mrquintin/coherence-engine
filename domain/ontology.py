@@ -163,27 +163,27 @@ def extract_ontology(propositions: Sequence[Proposition]) -> OntologyGraph:
             entities.append((start, end, entity_type, marker, eid))
         entities.sort(key=lambda e: (e[0], e[1]))
 
-        def _nearest_before(pos: int):
+        def _nearest_before(pos: int, _entities=entities):
             best = None
-            for e in entities:
+            for e in _entities:
                 if e[1] <= pos:
                     best = e
                 else:
                     break
             return best
 
-        def _nearest_after(pos: int):
-            for e in entities:
+        def _nearest_after(pos: int, _entities=entities):
+            for e in _entities:
                 if e[0] >= pos:
                     return e
             return None
 
-        def _process_relation(markers, relation, entity_type_for_event=None):
-            spans = _longest_non_overlapping(_find_marker_spans(lower, markers))
+        def _process_relation(markers, relation, entity_type_for_event=None, _lower=lower, _text=text):
+            spans = _longest_non_overlapping(_find_marker_spans(_lower, markers))
             for start, end, marker in spans:
                 if entity_type_for_event:
                     _register_entity(
-                        entity_type_for_event, marker, text[start:end]
+                        entity_type_for_event, marker, _text[start:end]
                     )
                 left = _nearest_before(start)
                 right = _nearest_after(end)

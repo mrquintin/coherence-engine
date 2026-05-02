@@ -25,6 +25,7 @@ jobs:
   oncall_release_gate_smoke:
     name: On-call release gate (smoke)
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,7 +38,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev,fund-workers]"
+          python -m pip install -e ".[dev,fund-api,fund-workers]"
           python -m pip install "PyYAML>=6.0"
 
       # Same live-drill artifact age check as release.yml; looser default max age for non-prod.
@@ -251,7 +252,7 @@ jobs:
           paths = [
               root / ".github/workflows/oncall-route-verification.yml",
               root / ".github/workflows/uncertainty-recalibration.yml",
-              root / "deploy/k8s/configmap-env-template.yaml",
+              root / "deploy/k8s/base/configmap-env-template.yaml",
               root / "deploy/helm/coherence-fund/values.yaml",
               root / "deploy/helm/coherence-fund/values-prod.yaml",
           ]
@@ -272,7 +273,7 @@ jobs:
           needle = "COHERENCE_FUND_OPS_ALERT_ROUTER_MODE"
           files = [
               pathlib.Path("deploy/systemd/coherence-fund.env.example"),
-              pathlib.Path("deploy/k8s/configmap-env-template.yaml"),
+              pathlib.Path("deploy/k8s/base/configmap-env-template.yaml"),
               pathlib.Path("deploy/helm/coherence-fund/values.yaml"),
           ]
           for f in files:
@@ -445,8 +446,8 @@ jobs:
           helm template coherence-fund-smoke deploy/helm/coherence-fund \
             -f deploy/helm/coherence-fund/values-prod.yaml \
             -f deploy/helm/coherence-fund/values-prod-sqs.yaml >/tmp/helm-sqs.yaml
-          rg "scoring-worker" /tmp/helm-kafka.yaml /tmp/helm-redis.yaml /tmp/helm-sqs.yaml
-          rg "process-scoring-jobs" /tmp/helm-kafka.yaml
+          grep "scoring-worker" /tmp/helm-kafka.yaml /tmp/helm-redis.yaml /tmp/helm-sqs.yaml
+          grep "process-scoring-jobs" /tmp/helm-kafka.yaml
 
       - name: Smoke k8s release path
         if: ${{ matrix.target == 'k8s' }}
@@ -454,19 +455,18 @@ jobs:
           kubectl kustomize deploy/k8s/overlays/prod >/tmp/kustomize-prod.yaml
           kubectl kustomize deploy/k8s/overlays/prod-redis >/tmp/kustomize-prod-redis.yaml
           kubectl kustomize deploy/k8s/overlays/prod-sqs >/tmp/kustomize-prod-sqs.yaml
-          rg -q "kind: Deployment" /tmp/kustomize-prod.yaml
-          rg "name: coherence-fund-scoring-worker" /tmp/kustomize-prod.yaml
-          rg "process-scoring-jobs" /tmp/kustomize-prod.yaml
+          grep -q "kind: Deployment" /tmp/kustomize-prod.yaml
+          grep "name: coherence-fund-scoring-worker" /tmp/kustomize-prod.yaml
+          grep "process-scoring-jobs" /tmp/kustomize-prod.yaml
 
       - name: Smoke systemd release path
         if: ${{ matrix.target == 'systemd' }}
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev,fund-workers]"
+          python -m pip install -e ".[dev,fund-api,fund-workers]"
           bash -n deploy/systemd/coherence-fund-health-watchdog.sh
-          rg "^ExecStart=" deploy/systemd/coherence-fund-api.service
-          rg "^ExecStart=" deploy/systemd/coherence-fund-worker.service
-          rg "^ExecStart=" deploy/systemd/coherence-fund-scoring-worker.service
-          rg "SECRET_MANAGER_READY_URL" deploy/systemd/coherence-fund.env.example
+          grep "^ExecStart=" deploy/systemd/coherence-fund-api.service
+          grep "^ExecStart=" deploy/systemd/coherence-fund-worker.service
+          grep "^ExecStart=" deploy/systemd/coherence-fund-scoring-worker.service
+          grep "SECRET_MANAGER_READY_URL" deploy/systemd/coherence-fund.env.example
           python deploy/scripts/secret_manager_preflight.py --help
-

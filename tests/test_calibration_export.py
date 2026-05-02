@@ -7,10 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 from coherence_engine.server.fund.services.calibration_export import (
-    CalibrationExportResult,
     _derive_n_contradictions,
     build_export_rows,
     export_rows_to_json,

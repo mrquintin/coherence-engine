@@ -1,0 +1,63 @@
+# Governed retention policy (prompt 57).
+#
+# This file is the system-of-record for how long each data class is
+# retained before the daily retention job tombstones the object-storage
+# blob and shreds its per-row encryption key. Counsel-reviewed values
+# only -- changes here MUST go through compliance review and update
+# docs/specs/data_retention.md.
+#
+# on_expiry semantics:
+#   tombstone_and_shred  -- soft-delete the object-storage URI, shred the
+#                            per-row encryption key, mark redacted=true.
+#                            The DB row is preserved as a tombstone so
+#                            audit references stay interpretable.
+#   keep                 -- never auto-delete. Used for the immutable
+#                            audit trail (decision artifacts, audit log
+#                            events). Subject erasure requests against
+#                            these classes are refused with
+#                            ERASURE_REFUSED_AUDIT_HOLD.
+schema_version: retention-policy-v1
+classes:
+  - name: transcript
+    retention_days: 90
+    on_expiry: tombstone_and_shred
+    description: >-
+      Founder interview transcript text + URI on fund_applications.
+      90-day retention balances pipeline rerun (debug) needs with PII
+      minimisation per GDPR Art. 5(1)(e).
+  - name: interview_recording
+    retention_days: 90
+    on_expiry: tombstone_and_shred
+    description: >-
+      Twilio voice recordings + browser WebRTC chunks. 90 days mirrors
+      the transcript class -- the recording is upstream of the same
+      coherence-scoring pipeline.
+  - name: decision_artifact
+    retention_days: indefinite
+    on_expiry: keep
+    description: >-
+      Immutable decision audit trail. Retained indefinitely under
+      regulator + LP audit obligations. Subject erasure requests against
+      this class are refused -- the artifact survives even after the
+      founder's identifying PII is shredded elsewhere.
+  - name: audit_log
+    retention_days: indefinite
+    on_expiry: keep
+    description: >-
+      fund_api_key_audit_events and analogues. Required for breach
+      forensics + regulator response. Never auto-deleted.
+  - name: kyc_evidence
+    retention_days: 1825   # 5 years (BSA recordkeeping for fund operators; verify with counsel)
+    on_expiry: tombstone_and_shred
+    description: >-
+      Founder KYC/AML evidence URIs. 5-year retention matches the BSA
+      recordkeeping floor for fund operators (31 CFR 1010.430). Verify
+      with counsel for your jurisdiction.
+  - name: founder_pii
+    retention_days: 2555   # ~7 years; long-tail tax / dispute window
+    on_expiry: tombstone_and_shred
+    description: >-
+      Founder full_name + email when no active application is in flight.
+      ~7 years preserves the long tail for tax/dispute lookbacks; older
+      rows are shredded in place so the founder_id remains a stable
+      foreign key for portfolio + decision references.

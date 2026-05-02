@@ -1,0 +1,12 @@
+{
+  "schema_version": "validation-study-report-v1",
+  "data_hash": "synthetic-fixture",
+  "coefficients": [
+    {"name": "intercept",         "point": -0.4, "ci_lower_95": -0.7, "ci_upper_95": -0.1, "ci_lower_99": -0.8, "ci_upper_99": 0.0},
+    {"name": "coherence_score",   "point":  1.8, "ci_lower_95":  1.2, "ci_upper_95":  2.4, "ci_lower_99":  1.0, "ci_upper_99": 2.6},
+    {"name": "log_check_size",    "point": -0.05, "ci_lower_95": -0.15, "ci_upper_95": 0.05, "ci_lower_99": -0.20, "ci_upper_99": 0.10}
+  ],
+  "metrics": {"auc_roc": 0.78, "brier_score": 0.21, "convergence": "converged"},
+  "n_known_outcome": 320,
+  "n_total": 400
+}

@@ -181,7 +181,7 @@ def compute_idempotency_key(application_id: str, template_id: str) -> str:
     are coerced to ``str`` before hashing so a non-string id never
     silently produces a different digest.
     """
-    payload = f"{str(application_id)}|{str(template_id)}".encode("utf-8")
+    payload = f"{application_id!s}|{template_id!s}".encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 

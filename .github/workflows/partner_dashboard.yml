@@ -1,0 +1,92 @@
+name: partner_dashboard
+
+on:
+  pull_request:
+    paths:
+      - 'apps/partner_dashboard/**'
+      - 'docs/specs/openapi_v1.yaml'
+      - '.github/workflows/partner_dashboard.yml'
+      - 'server/fund/routers/partner_api.py'
+      - 'server/fund/services/decision_overrides.py'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/partner_dashboard/**'
+      - 'docs/specs/openapi_v1.yaml'
+      - '.github/workflows/partner_dashboard.yml'
+      - 'server/fund/routers/partner_api.py'
+      - 'server/fund/services/decision_overrides.py'
+
+defaults:
+  run:
+    working-directory: apps/partner_dashboard
+
+jobs:
+  build:
+    name: lint + typecheck + next build + tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: anon-key-stub-for-ci
+      BACKEND_API_URL: http://localhost:8000
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.12.0 --activate
+        working-directory: ${{ github.workspace }}
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('apps/partner_dashboard/package.json') }}
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type-check
+        run: pnpm tsc --noEmit
+
+      - name: next build
+        run: pnpm build
+
+      - name: Vitest
+        run: pnpm vitest run --passWithNoTests
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Playwright spec
+        run: pnpm test:e2e
+
+  backend-tests:
+    name: pytest tests/test_decision_overrides.py
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install backend deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt || true
+          pip install pytest fastapi sqlalchemy "argon2-cffi" jsonschema httpx
+      - name: pytest
+        run: python -m pytest tests/test_decision_overrides.py -v

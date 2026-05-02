@@ -2,15 +2,13 @@
 weight validation, parser enhancements, report fixes, and DomainComparator."""
 
 import os
-import json
 import pytest
-from unittest.mock import patch
 import subprocess
 import sys
 
 from coherence_engine.config import EngineConfig
 from coherence_engine.core.scorer import CoherenceScorer
-from coherence_engine.core.parser import ArgumentParser, SUPPORT_INDICATORS, COREFERENCE_PRONOUNS
+from coherence_engine.core.parser import ArgumentParser, SUPPORT_INDICATORS
 from coherence_engine.core.types import ContradictionPair, CoherenceResult, LayerResult, ArgumentStructure
 from coherence_engine.core.report import ReportGenerator
 from coherence_engine.domain.premises import DOMAINS, TENSIONS
@@ -266,7 +264,7 @@ class TestCrossLayerFusion:
 class TestCompressionCalibration:
     def test_calibrated_score_bounded(self):
         from coherence_engine.layers.compression import CompressionAnalyzer
-        from coherence_engine.core.types import ArgumentStructure, Proposition
+        from coherence_engine.core.types import Proposition
         analyzer = CompressionAnalyzer()
         props = [Proposition(id=f"P{i}", text=f"Sentence number {i} about the topic.")
                  for i in range(10)]
@@ -276,7 +274,7 @@ class TestCompressionCalibration:
 
     def test_calibration_label_in_details(self):
         from coherence_engine.layers.compression import CompressionAnalyzer
-        from coherence_engine.core.types import ArgumentStructure, Proposition
+        from coherence_engine.core.types import Proposition
         analyzer = CompressionAnalyzer()
         props = [Proposition(id="P1", text="Alpha."), Proposition(id="P2", text="Beta.")]
         structure = ArgumentStructure(propositions=props, relations=[])
@@ -285,7 +283,7 @@ class TestCompressionCalibration:
 
     def test_short_vs_long_text_stability(self):
         from coherence_engine.layers.compression import CompressionAnalyzer
-        from coherence_engine.core.types import ArgumentStructure, Proposition
+        from coherence_engine.core.types import Proposition
         analyzer = CompressionAnalyzer()
         base = "The economy is growing and employment rates continue to rise steadily."
         short_props = [Proposition(id=f"P{i}", text=base) for i in range(3)]

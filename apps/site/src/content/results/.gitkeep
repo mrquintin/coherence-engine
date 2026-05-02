@@ -1,0 +1,4 @@
+# Validation study reports rendered by scripts/render_study_to_mdx.py
+# go here. Each file is `study_<version>.mdx`. The renderer is
+# deterministic; the directory itself is checked in so the index page
+# resolves at build time even before the first study has been rendered.

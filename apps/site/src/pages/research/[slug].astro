@@ -1,0 +1,17 @@
+---
+import ResearchLayout from '~/layouts/ResearchLayout.astro';
+import { getPublishedResearchPapers } from '~/lib/research';
+
+export async function getStaticPaths() {
+  return getPublishedResearchPapers().map((paper) => ({
+    params: { slug: paper.slug },
+    props: { paper },
+  }));
+}
+
+const { paper } = Astro.props;
+const Content = paper.Content;
+---
+<ResearchLayout frontmatter={paper.data}>
+  <Content />
+</ResearchLayout>

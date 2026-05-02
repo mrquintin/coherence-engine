@@ -1,0 +1,103 @@
+# Dependabot configuration (Wave 17, prompt 65 of 70).
+#
+# Weekly updates for pip, npm, github-actions; grouped by ecosystem so a
+# single PR bundles the week's bumps per ecosystem rather than spamming
+# the queue with one PR per dep.
+
+version: 2
+
+updates:
+  # Backend Python deps (root pyproject.toml + requirements*.txt).
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    groups:
+      pip-weekly:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "deps(pip)"
+    labels:
+      - dependencies
+      - python
+
+  # Founder portal (Next.js).
+  - package-ecosystem: npm
+    directory: "/apps/founder_portal"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    groups:
+      npm-weekly-founder-portal:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "deps(npm,founder_portal)"
+    labels:
+      - dependencies
+      - javascript
+
+  # Partner dashboard (Next.js).
+  - package-ecosystem: npm
+    directory: "/apps/partner_dashboard"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    groups:
+      npm-weekly-partner-dashboard:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "deps(npm,partner_dashboard)"
+    labels:
+      - dependencies
+      - javascript
+
+  # Marketing site (Astro).
+  - package-ecosystem: npm
+    directory: "/apps/site"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    groups:
+      npm-weekly-site:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "deps(npm,site)"
+    labels:
+      - dependencies
+      - javascript
+
+  # GitHub Actions (workflow YAML).
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    groups:
+      github-actions-weekly:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "deps(actions)"
+    labels:
+      - dependencies
+      - github-actions

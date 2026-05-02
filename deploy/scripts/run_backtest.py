@@ -25,12 +25,12 @@ _REPO_PARENT = _REPO_ROOT.parent
 if str(_REPO_PARENT) not in sys.path:
     sys.path.insert(0, str(_REPO_PARENT))
 
-from coherence_engine.server.fund.services.backtest import (  # noqa: E402
+from coherence_engine.server.fund.services.backtest import (
     BacktestConfig,
     BacktestError,
     run_backtest,
 )
-from coherence_engine.server.fund.services.decision_policy import (  # noqa: E402
+from coherence_engine.server.fund.services.decision_policy import (
     DECISION_POLICY_VERSION,
 )
 

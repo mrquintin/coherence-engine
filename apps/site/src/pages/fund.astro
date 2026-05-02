@@ -1,0 +1,71 @@
+---
+import BaseLayout from '~/layouts/BaseLayout.astro';
+import { platformLinks } from '~/lib/platform';
+---
+<BaseLayout
+  title="The Fund — Coherence Engine"
+  description="Public-facing thesis and process for the Coherence Fund's pre-seed pipeline. No LP-restricted documents are posted on this site."
+>
+  <section class="prose">
+    <p class="text-sm uppercase tracking-wide text-muted not-prose">Fund</p>
+    <h1 class="mt-2">Pre-seed underwriting on argumentative structure.</h1>
+    <div class="not-prose my-6 grid gap-3 sm:grid-cols-2">
+      <a class="rounded-md border border-ink/10 bg-white px-4 py-3 no-underline shadow-sm transition hover:border-accent/50" href={platformLinks.founder}>
+        <span class="block text-sm font-semibold text-ink">Founder portal</span>
+        <span class="mt-1 block text-sm text-muted">Submit a thesis, attach artifacts, and track status.</span>
+      </a>
+      <a class="rounded-md border border-ink/10 bg-white px-4 py-3 no-underline shadow-sm transition hover:border-accent/50" href={platformLinks.partner}>
+        <span class="block text-sm font-semibold text-ink">Partner dashboard</span>
+        <span class="mt-1 block text-sm text-muted">Review the pipeline, inspect artifacts, and record overrides.</span>
+      </a>
+      <a class="rounded-md border border-ink/10 bg-white px-4 py-3 no-underline shadow-sm transition hover:border-accent/50" href={platformLinks.lp}>
+        <span class="block text-sm font-semibold text-ink">LP portal</span>
+        <span class="mt-1 block text-sm text-muted">Access notices and fund reporting behind LP auth.</span>
+      </a>
+      <a class="rounded-md border border-ink/10 bg-white px-4 py-3 no-underline shadow-sm transition hover:border-accent/50" href={`${platformLinks.api}/api/v1/health`}>
+        <span class="block text-sm font-semibold text-ink">Backend health</span>
+        <span class="mt-1 block text-sm text-muted">Public readiness surface for the fund orchestrator API.</span>
+      </a>
+    </div>
+
+    <h2>What we look for</h2>
+    <p>
+      Founders whose pitch&mdash;both written and in interview&mdash;holds together as an argument.
+      That means: claims with traceable premises, no internal contradictions that the founder cannot
+      defuse, and a thesis whose competitive premise (why the incumbent is incoherent) is
+      identifiable and falsifiable.
+    </p>
+
+    <h2>How we evaluate</h2>
+    <ol>
+      <li><strong>Application.</strong> Founder submits a written thesis through the founder portal.</li>
+      <li><strong>Transcript.</strong> A recorded interview is transcribed and quality-gated.</li>
+      <li><strong>Compilation.</strong> Transcript and thesis are compiled into a proposition graph.</li>
+      <li><strong>Scoring.</strong> The composite coherence score is computed with full provenance.</li>
+      <li><strong>Decision.</strong> A formal policy (decision-policy-v1) maps the score and a small
+        set of partner-driven judgments to an offer or pass.</li>
+      <li><strong>Manual override.</strong> A partner can override either direction. Every override is logged.</li>
+    </ol>
+
+    <h2>Operating workflow</h2>
+    <p>
+      The production workflow is route-backed: founder intake writes an application, partner/API
+      keys can run or resume the orchestrator, and a cron-protected worker endpoint drains the
+      scoring queue without requiring a long-running web process. Decision artifacts remain
+      provenance-bearing records rather than opaque recommendations.
+    </p>
+
+    <h2>What this site is not</h2>
+    <p>
+      This site does not host any LP-restricted material. PPMs, side letters, and portfolio data live
+      in a separate access-controlled system. If you are an existing LP, please use the channel you
+      were onboarded through.
+    </p>
+
+    <h2>Process artifacts</h2>
+    <p>
+      The decision policy formalization, event schemas, and transcript-quality rubric are public
+      research outputs. See <a href="/research">/research</a> for the published versions.
+    </p>
+  </section>
+</BaseLayout>

@@ -611,7 +611,7 @@ def test_cli_workflow_parser_is_registered():
     import sys as _sys
     from pathlib import Path as _Path
 
-    repo_root = _Path(__file__).resolve().parents[2]
+    repo_root = _Path(__file__).resolve().parents[1]
     env = dict(os.environ)
     env["PYTHONPATH"] = str(repo_root) + os.pathsep + env.get("PYTHONPATH", "")
     result = subprocess.run(
@@ -619,7 +619,7 @@ def test_cli_workflow_parser_is_registered():
         capture_output=True,
         text=True,
         env=env,
-        cwd=str(repo_root / "coherence_engine"),
+        cwd=str(repo_root),
         timeout=30,
     )
     assert result.returncode == 0

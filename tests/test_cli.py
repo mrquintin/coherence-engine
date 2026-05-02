@@ -4,7 +4,6 @@ import subprocess
 import sys
 import os
 import json
-import pytest
 
 ENGINE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")

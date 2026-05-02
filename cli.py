@@ -214,6 +214,73 @@ def main():
     rotate_key_p.add_argument("--expires-in-days", type=int, default=None)
     rotate_key_p.add_argument("--secret-ref", type=str, default=None, help="Secret manager ref to write rotated token")
 
+    # ── api-keys (v2 service-account scoped keys) ────────────
+    api_keys_p = subparsers.add_parser(
+        "api-keys",
+        help="Manage v2 service-account API keys (Argon2id, scoped, rotatable)",
+    )
+    api_keys_sub = api_keys_p.add_subparsers(
+        dest="api_keys_command", required=True, help="Subcommands"
+    )
+    ak_create = api_keys_sub.add_parser(
+        "create",
+        help="api-keys create --account NAME --scope S [--scope S ...] [--expires YYYY-MM-DD]",
+    )
+    ak_create.add_argument("--account", required=True, help="Service account name")
+    ak_create.add_argument(
+        "--scope",
+        action="append",
+        required=True,
+        help="Scope to grant; pass --scope multiple times for multiple scopes",
+    )
+    ak_create.add_argument("--label", default="", help="Free-form label")
+    ak_create.add_argument(
+        "--expires",
+        default=None,
+        help="Hard expiry as YYYY-MM-DD (default: 1 year from now)",
+    )
+    ak_create.add_argument(
+        "--rate-limit-per-minute",
+        type=int,
+        default=60,
+        help="Per-key rate limit in requests/minute (default 60)",
+    )
+    ak_create.add_argument(
+        "--description",
+        default="",
+        help="If the named service account does not exist yet, create it with this description",
+    )
+    ak_create.add_argument(
+        "--owner-email",
+        default="",
+        help="If creating the service account, attach this owner email",
+    )
+    ak_list = api_keys_sub.add_parser("list", help="api-keys list [--account NAME]")
+    ak_list.add_argument(
+        "--account",
+        default=None,
+        help="Filter by service account name (lists all accounts' keys when omitted)",
+    )
+    ak_revoke = api_keys_sub.add_parser(
+        "revoke", help="api-keys revoke --prefix PREFIX"
+    )
+    ak_revoke.add_argument("--prefix", required=True)
+    ak_rotate = api_keys_sub.add_parser(
+        "rotate", help="api-keys rotate --prefix PREFIX [--grace-seconds N]"
+    )
+    ak_rotate.add_argument("--prefix", required=True)
+    ak_rotate.add_argument(
+        "--grace-seconds",
+        type=int,
+        default=0,
+        help="Seconds the old key remains valid before being revoked (default 0 = immediate revoke)",
+    )
+    ak_rotate.add_argument(
+        "--expires",
+        default=None,
+        help="New key expiry YYYY-MM-DD (default: 1 year from now)",
+    )
+
     # ── layers ────────────────────────────────────────────────
     subparsers.add_parser("layers", help="List available layers and their status")
 
@@ -866,6 +933,951 @@ def main():
         ),
     )
 
+    # ── db audit-migrations ───────────────────────────────────
+    db_p = subparsers.add_parser(
+        "db",
+        help=(
+            "Database parity / migration helpers (audit-migrations, ...). "
+            "See docs/specs/migration_registry.md."
+        ),
+    )
+    db_sub = db_p.add_subparsers(
+        dest="db_command",
+        required=True,
+        help="Subcommands",
+    )
+    db_audit = db_sub.add_parser(
+        "audit-migrations",
+        help=(
+            "Audit alembic/versions/ for Postgres + SQLite parity. "
+            "Exit 0 if every revision has errors == [], else exit 2."
+        ),
+    )
+    db_audit.add_argument(
+        "--write-registry",
+        action="store_true",
+        help="Overwrite data/governed/migration_registry.json with the audit.",
+    )
+    db_audit.add_argument(
+        "--versions-dir",
+        type=str,
+        default=None,
+        help="Override path to alembic/versions/ (default: <repo>/alembic/versions).",
+    )
+    db_audit.add_argument(
+        "--registry-path",
+        type=str,
+        default=None,
+        help="Override the registry output path.",
+    )
+    db_audit.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the registry JSON to stdout instead of the table.",
+    )
+    db_audit.add_argument(
+        "--audited-at",
+        type=str,
+        default=None,
+        help="Pin the audited_at timestamp (default: latest git authored ISO).",
+    )
+
+    # ── secrets manifest / secrets resolve ────────────────────
+    secrets_p = subparsers.add_parser(
+        "secrets",
+        help=(
+            "Secret manager operations (secrets manifest, secrets resolve). "
+            "See docs/specs/secret_management.md."
+        ),
+    )
+    secrets_sub = secrets_p.add_subparsers(
+        dest="secrets_command",
+        required=True,
+        help="Subcommands",
+    )
+    secrets_manifest_p = secrets_sub.add_parser(
+        "manifest",
+        help=(
+            "Print the secret manifest with current resolution status "
+            "(name, category, policy, status — never values)."
+        ),
+    )
+    secrets_manifest_p.add_argument(
+        "--env",
+        type=str,
+        default=None,
+        help="Environment to evaluate (default: $COHERENCE_FUND_ENV / $APP_ENV / development).",
+    )
+    secrets_manifest_p.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit the manifest report as JSON instead of a table.",
+    )
+    secrets_resolve_p = secrets_sub.add_parser(
+        "resolve",
+        help=(
+            "Print one secret value to stdout. Refused unless "
+            "--allow-unsafe-print is passed AND CONFIRM_PRINT_SECRET=YES "
+            "AND env != production."
+        ),
+    )
+    secrets_resolve_p.add_argument(
+        "--name",
+        required=True,
+        type=str,
+        help="Secret name to resolve.",
+    )
+    secrets_resolve_p.add_argument(
+        "--allow-unsafe-print",
+        action="store_true",
+        help="Acknowledge that this prints a secret to stdout. Required.",
+    )
+
+    # ── config (12-factor audit + show) ──────────────────────
+    config_p = subparsers.add_parser(
+        "config",
+        help=(
+            "Twelve-factor configuration ops (config audit, config show). "
+            "See docs/specs/twelve_factor.md."
+        ),
+    )
+    config_sub = config_p.add_subparsers(
+        dest="config_command",
+        required=True,
+        help="Subcommands",
+    )
+    config_audit_p = config_sub.add_parser(
+        "audit",
+        help=(
+            "Run the twelve-factor compliance auditor and print/write the report. "
+            "Exits 0 if no severity=error findings, 2 otherwise."
+        ),
+    )
+    config_audit_p.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="Where to write the JSON report (default: stdout).",
+    )
+    config_audit_p.add_argument(
+        "--format",
+        choices=("json", "summary"),
+        default="summary",
+        help="Output format (default: summary).",
+    )
+    config_show_p = config_sub.add_parser(
+        "show",
+        help=(
+            "Print the resolved Settings as JSON, redacting any SecretStr-tagged "
+            "field. Read-only; safe to commit the output as a snapshot."
+        ),
+    )
+    config_show_p.add_argument(
+        "--format",
+        choices=("json", "table"),
+        default="json",
+        help="Output format (default: json).",
+    )
+
+    # ── flags (feature flag service) ─────────────────────────
+    flags_p = subparsers.add_parser(
+        "flags",
+        help=(
+            "Feature flag service operations (flags list, flags set). "
+            "See docs/specs/feature_flags.md."
+        ),
+    )
+    flags_sub = flags_p.add_subparsers(
+        dest="flags_command",
+        required=True,
+        help="Subcommands",
+    )
+    flags_list_p = flags_sub.add_parser(
+        "list",
+        help="Print every registered flag with its type, current value, and source.",
+    )
+    flags_list_p.add_argument(
+        "--format",
+        choices=("table", "json"),
+        default="table",
+        help="Output format (default: table).",
+    )
+    flags_set_p = flags_sub.add_parser(
+        "set",
+        help=(
+            "Flip a flag locally (non-prod) or via the configured backend. "
+            "Restricted flags require --actor and --reason and emit an audit row."
+        ),
+    )
+    flags_set_p.add_argument("--key", required=True, type=str, help="Flag key.")
+    flags_set_p.add_argument("--value", required=True, type=str, help="New value (string-coerced).")
+    flags_set_p.add_argument("--actor", type=str, default=None, help="Actor identity (required for restricted flags).")
+    flags_set_p.add_argument("--reason", type=str, default=None, help="Reason for the change (required for restricted flags).")
+
+    # ── historical-corpus ─────────────────────────────────────
+    hc_p = subparsers.add_parser(
+        "historical-corpus",
+        help=(
+            "Historical-startups validation corpus harness (prompt 42): "
+            "ingest pitches, recompute eligibility, validate manifest. "
+            "See docs/specs/historical_corpus.md."
+        ),
+    )
+    hc_sub = hc_p.add_subparsers(
+        dest="historical_corpus_command",
+        required=True,
+        help="Subcommands",
+    )
+    hc_ingest = hc_sub.add_parser(
+        "ingest",
+        help=(
+            "historical-corpus ingest --source <provenance> --path <dir|file> "
+            "[--apply]. Default is dry-run; pass --apply to append accepted "
+            "rows to the manifest."
+        ),
+    )
+    hc_ingest.add_argument(
+        "--source",
+        type=str,
+        required=True,
+        choices=(
+            "crunchbase",
+            "cb_insights",
+            "operator_archive",
+            "public_filings",
+            "synthetic",
+        ),
+        help="Provenance source label.",
+    )
+    hc_ingest.add_argument(
+        "--path",
+        type=str,
+        required=True,
+        help="File or directory of *.json pitch rows to ingest.",
+    )
+    hc_ingest.add_argument(
+        "--apply",
+        action="store_true",
+        default=False,
+        help="Disable dry-run and write accepted rows to the manifest.",
+    )
+    hc_ingest.add_argument(
+        "--manifest",
+        type=str,
+        default=None,
+        help="Override manifest path (default: data/historical_corpus/manifest.jsonl).",
+    )
+    hc_stat = hc_sub.add_parser(
+        "stat",
+        help="Print a deterministic summary of the corpus manifest as JSON.",
+    )
+    hc_stat.add_argument(
+        "--manifest",
+        type=str,
+        default=None,
+        help="Override manifest path.",
+    )
+    hc_validate = hc_sub.add_parser(
+        "validate",
+        help=(
+            "Re-validate the manifest against historical_pitch.v1.json and "
+            "recompute eligibility flags. Exit 0 if every row is schema-valid, "
+            "else exit 2."
+        ),
+    )
+    hc_validate.add_argument(
+        "--manifest",
+        type=str,
+        default=None,
+        help="Override manifest path.",
+    )
+
+    # ── outcomes ─────────────────────────────────────────────
+    outcomes_p = subparsers.add_parser(
+        "outcomes",
+        help=(
+            "Outcome-labeling service for the historical-startups corpus "
+            "(prompt 43): attach realized outcomes (5-yr survival, exit "
+            "event, ARR, headcount) to each pitch with required provenance. "
+            "See docs/specs/outcome_labeling.md."
+        ),
+    )
+    outcomes_sub = outcomes_p.add_subparsers(
+        dest="outcomes_command",
+        required=True,
+        help="Subcommands",
+    )
+    outcomes_attach = outcomes_sub.add_parser(
+        "attach",
+        help=(
+            "outcomes attach --pitch-id <uuid> --row <path|->. Validates "
+            "the row against outcome_label.v1.json and appends it to "
+            "outcomes.jsonl. Provenance is required."
+        ),
+    )
+    outcomes_attach.add_argument(
+        "--pitch-id",
+        type=str,
+        required=True,
+        help="UUIDv7 pitch_id; must match the row's pitch_id.",
+    )
+    outcomes_attach.add_argument(
+        "--row",
+        type=str,
+        required=True,
+        help="Path to a JSON file containing the outcome row, or '-' for stdin.",
+    )
+    outcomes_attach.add_argument(
+        "--outcomes",
+        type=str,
+        default=None,
+        help="Override outcomes.jsonl path (default: data/historical_corpus/outcomes.jsonl).",
+    )
+    outcomes_audit = outcomes_sub.add_parser(
+        "audit",
+        help=(
+            "Audit the manifest+outcomes pair. Exits 2 if any pitch is "
+            "missing an outcome row or if any row is invalid."
+        ),
+    )
+    outcomes_audit.add_argument(
+        "--manifest", type=str, default=None, help="Override manifest path."
+    )
+    outcomes_audit.add_argument(
+        "--outcomes", type=str, default=None, help="Override outcomes.jsonl path."
+    )
+    outcomes_export = outcomes_sub.add_parser(
+        "export",
+        help=(
+            "Export the corpus joined with the latest outcome per pitch_id "
+            "as a deterministic JSON frame. Rows with 'unknown' "
+            "survival_5yr or exit_event are excluded by default."
+        ),
+    )
+    outcomes_export.add_argument(
+        "--manifest", type=str, default=None, help="Override manifest path."
+    )
+    outcomes_export.add_argument(
+        "--outcomes", type=str, default=None, help="Override outcomes.jsonl path."
+    )
+    outcomes_export.add_argument(
+        "--include-unknown",
+        action="store_true",
+        default=False,
+        help="Include rows whose latest outcome is 'unknown'.",
+    )
+
+    # ── validation-study ──────────────────────────────────────
+    vs_p = subparsers.add_parser(
+        "validation-study",
+        help=(
+            "Coherence-vs-outcome regression study harness (prompt 44). "
+            "Joins the historical-pitch corpus with realized outcomes, "
+            "scores every pitch, fits a logistic regression, and emits a "
+            "deterministic JSON report with bootstrap CIs, Brier, AUC, "
+            "and a calibration curve."
+        ),
+    )
+    vs_sub = vs_p.add_subparsers(
+        dest="validation_study_command",
+        required=True,
+        help="Subcommands",
+    )
+    vs_run = vs_sub.add_parser(
+        "run",
+        help=(
+            "Run the deterministic study and write the report JSON. "
+            "Refuses to emit when N(known outcome) < pre-registered "
+            "minimum (raises INSUFFICIENT_SAMPLE)."
+        ),
+    )
+    vs_run.add_argument(
+        "--output",
+        type=str,
+        required=True,
+        help="Destination path for the canonical JSON report.",
+    )
+    vs_run.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Bootstrap RNG seed (default: 0).",
+    )
+    vs_run.add_argument(
+        "--manifest", type=str, default=None, help="Override manifest path."
+    )
+    vs_run.add_argument(
+        "--outcomes", type=str, default=None, help="Override outcomes.jsonl path."
+    )
+    vs_run.add_argument(
+        "--scores",
+        type=str,
+        default=None,
+        help=(
+            "Path to a JSON object mapping pitch_id to "
+            "{coherence_score, check_size_usd?}. Required for a real run."
+        ),
+    )
+    vs_run.add_argument(
+        "--preregistration",
+        type=str,
+        default=None,
+        help="Override preregistration.yaml path.",
+    )
+    vs_run.add_argument(
+        "--bootstrap-iters",
+        type=int,
+        default=10000,
+        help="Number of bootstrap resamples (default: 10000).",
+    )
+    vs_report = vs_sub.add_parser(
+        "report",
+        help="Render a Markdown brief from a canonical JSON report.",
+    )
+    vs_report.add_argument(
+        "--in",
+        dest="report_in",
+        type=str,
+        required=True,
+        help="Path to the JSON report produced by 'validation-study run'.",
+    )
+
+    # ── leakage ───────────────────────────────────────────────
+    leak_p = subparsers.add_parser(
+        "leakage",
+        help=(
+            "Leakage audit + temporal-split integrity check (prompt 45). "
+            "Verifies (a) no holdout pitch appears in any training "
+            "artifact's training set, (b) the corpus splits cleanly "
+            "across the pre/post-2020 buffer, and (c) per-feature "
+            "training/holdout marginals do not drift (KS + PSI). The "
+            "audit raises LEAKAGE_DETECTED on failure and blocks the "
+            "validation-study renderer."
+        ),
+    )
+    leak_sub = leak_p.add_subparsers(
+        dest="leakage_command",
+        required=True,
+        help="Subcommands",
+    )
+    leak_audit = leak_sub.add_parser(
+        "audit",
+        help=(
+            "Run the leakage audit and emit a structured JSON report. "
+            "Exit code 0 = passed, 2 = LEAKAGE_DETECTED."
+        ),
+    )
+    leak_audit.add_argument(
+        "--manifest",
+        type=str,
+        default=None,
+        help="Override path to the historical-corpus manifest.jsonl.",
+    )
+    leak_audit.add_argument(
+        "--training-artifacts-index",
+        type=str,
+        default=None,
+        help="Override path to data/governed/training_artifacts_index.json.",
+    )
+    leak_audit.add_argument(
+        "--feature",
+        action="append",
+        dest="features",
+        default=None,
+        help=(
+            "Repeatable. Field name in the corpus row to include in the "
+            "drift audit (KS + PSI). Pass once per feature."
+        ),
+    )
+    leak_audit.add_argument(
+        "--train-end",
+        type=str,
+        default="2019-12-31",
+        help="Inclusive upper edge of the training window.",
+    )
+    leak_audit.add_argument(
+        "--buffer-year",
+        type=int,
+        default=2020,
+        help="Year fully excluded from both partitions (default: 2020).",
+    )
+    leak_audit.add_argument(
+        "--holdout-start",
+        type=str,
+        default="2021-01-01",
+        help="Inclusive lower edge of the holdout window.",
+    )
+    leak_audit.add_argument(
+        "--buffer-override-rationale",
+        type=str,
+        default=None,
+        help=(
+            "Required when --buffer-year != 2020. Free-text rationale "
+            "echoed into the audit report."
+        ),
+    )
+    leak_audit.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="Optional path to write the audit-report JSON.",
+    )
+
+    # ── replication ───────────────────────────────────────────
+    repl_p = subparsers.add_parser(
+        "replication",
+        help=(
+            "Independent replication harnesses (prompt 47, Wave 13). "
+            "Subcommands run pre-registered, deterministic studies that "
+            "test prior headline claims on independent corpora."
+        ),
+    )
+    repl_sub = repl_p.add_subparsers(
+        dest="replication_command",
+        required=True,
+        help="Subcommands",
+    )
+    repl_cp = repl_sub.add_parser(
+        "cosine-paradox",
+        help=(
+            "Replicate the Cosine Paradox claim on an independent NLI "
+            "corpus. Reports descriptive stats, Mann-Whitney U, "
+            "rank-biserial effect size with bootstrap CI, and a "
+            "permutation p-value. Refutation criterion: |effect| >= 0.20 "
+            "AND p < 0.01."
+        ),
+    )
+    repl_cp.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run on the bundled tiny fixture and emit JSON to stdout.",
+    )
+    repl_cp.add_argument(
+        "--cosines",
+        dest="cosines_path",
+        type=str,
+        default=None,
+        help="Path to a precomputed cosines JSON.",
+    )
+    repl_cp.add_argument(
+        "--dataset",
+        dest="dataset_path",
+        type=str,
+        default=None,
+        help="Path to a raw NLI .jsonl with premise/hypothesis/label.",
+    )
+    repl_cp.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="Write the canonical JSON report here (default: stdout).",
+    )
+    repl_cp.add_argument(
+        "--seed", type=int, default=None,
+        help="Override the pre-registered random seed.",
+    )
+    repl_cp.add_argument(
+        "--n-permutations", type=int, default=None,
+        help="Override the pre-registered permutation count.",
+    )
+    repl_cp.add_argument(
+        "--n-bootstrap-iterations", type=int, default=None,
+        help="Override the bootstrap iteration count.",
+    )
+    repl_cp.add_argument(
+        "--allow-network",
+        action="store_true",
+        help="Permit network access for embedder + dataset download.",
+    )
+    repl_cp.add_argument(
+        "--preregistration", type=str, default=None,
+        help="Override path to preregistration.yaml.",
+    )
+    repl_cp.add_argument(
+        "--minimum-n-per-label", type=int, default=None,
+        help="Override stopping_rule.minimum_n_per_label (testing only).",
+    )
+
+    repl_chs = repl_sub.add_parser(
+        "c-hat-stability",
+        help=(
+            "Cross-domain stability study for the contradiction direction "
+            "ĉ (prompt 48, Wave 13). Fits ĉ on disjoint per-domain "
+            "subsets and reports pairwise abs-cosine, cross-domain ROC "
+            "AUC, and subsample-size sensitivity. Decision rule: "
+            "single ĉ holds when pairwise abs-cosine min ≥ 0.70 AND "
+            "median cross-domain AUC drop ≤ 0.05; otherwise per-domain ĉ."
+        ),
+    )
+    repl_chs.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run on the bundled tiny synthetic fixture and emit JSON to stdout.",
+    )
+    repl_chs.add_argument(
+        "--corpus",
+        dest="corpus_path",
+        type=str,
+        default=None,
+        help="Path to a per-domain pair-embeddings JSON.",
+    )
+    repl_chs.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="Write the canonical JSON report here (default: stdout).",
+    )
+    repl_chs.add_argument(
+        "--seed", type=int, default=None,
+        help="Override the pre-registered random seed.",
+    )
+    repl_chs.add_argument(
+        "--n-bootstrap-iterations", type=int, default=None,
+        help="Override the bootstrap iteration count.",
+    )
+    repl_chs.add_argument(
+        "--n-subsamples", type=int, default=None,
+        help="Override the subsample count for sensitivity analysis.",
+    )
+    repl_chs.add_argument(
+        "--preregistration", type=str, default=None,
+        help="Override path to preregistration.yaml.",
+    )
+    repl_chs.add_argument(
+        "--minimum-pairs-per-domain-label", type=int, default=None,
+        help="Override stopping_rule.minimum_pairs_per_domain_label (testing only).",
+    )
+
+    repl_hvc = repl_sub.add_parser(
+        "hoyer-vs-cosine",
+        help=(
+            "Hoyer-sparsity vs raw-cosine head-to-head ROC harness "
+            "(prompt 49, Wave 13). Reports ROC AUC + 95% paired-bootstrap "
+            "CIs for cosine, Hoyer-of-difference, and ĉ-projection scores, "
+            "plus DeLong two-sided z-tests for AUC equality between "
+            "(hoyer, cosine) and (projection, cosine). Decision rule: "
+            "DeLong p-value < alpha rejects equality."
+        ),
+    )
+    repl_hvc.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run on the bundled tiny fixture and emit JSON to stdout.",
+    )
+    repl_hvc.add_argument(
+        "--corpus",
+        dest="corpus_path",
+        type=str,
+        default=None,
+        help="Path to a labeled pair-embedding JSON.",
+    )
+    repl_hvc.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="Write the canonical JSON report here (default: stdout).",
+    )
+    repl_hvc.add_argument(
+        "--seed", type=int, default=None,
+        help="Override the pre-registered random seed.",
+    )
+    repl_hvc.add_argument(
+        "--n-bootstrap-iterations", type=int, default=None,
+        help="Override the bootstrap iteration count.",
+    )
+    repl_hvc.add_argument(
+        "--preregistration", type=str, default=None,
+        help="Override path to preregistration.yaml.",
+    )
+    repl_hvc.add_argument(
+        "--minimum-eval-pairs-per-label", type=int, default=None,
+        help="Override stopping_rule.minimum_eval_pairs_per_label (testing only).",
+    )
+
+    repl_rmr = repl_sub.add_parser(
+        "reverse-marxism-rigor",
+        help=(
+            "Reverse-Marxism reflection-recovery rigor study (prompt 50, "
+            "Wave 13). Replicates the 84.3% Householder-reflection "
+            "headline under stricter conditions: held-out concept axis, "
+            "bootstrapped CI on recovery rate, random-reflection null "
+            "baseline, and a frozen alpha sensitivity sweep. Decision "
+            "rule: held-out recovery generalises when its CI low at "
+            "alpha=2 exceeds the random-baseline CI high at alpha=2."
+        ),
+    )
+    repl_rmr.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run on the bundled synthetic fixture and emit JSON to stdout.",
+    )
+    repl_rmr.add_argument(
+        "--corpus",
+        dest="corpus_path",
+        type=str,
+        default=None,
+        help="Path to a held-out rigor-corpus JSON.",
+    )
+    repl_rmr.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="Write the canonical JSON report here (default: stdout).",
+    )
+    repl_rmr.add_argument(
+        "--seed", type=int, default=None,
+        help="Override the pre-registered random seed.",
+    )
+    repl_rmr.add_argument(
+        "--n-bootstrap", type=int, default=None,
+        help="Override the bootstrap iteration count.",
+    )
+    repl_rmr.add_argument(
+        "--n-random-axes", type=int, default=None,
+        help="Override the number of random null-baseline axes.",
+    )
+    repl_rmr.add_argument(
+        "--preregistration", type=str, default=None,
+        help="Override path to preregistration.yaml.",
+    )
+    repl_rmr.add_argument(
+        "--minimum-holdout-sentences", type=int, default=None,
+        help="Override stopping_rule.minimum_holdout_sentences (testing only).",
+    )
+    repl_rmr.add_argument(
+        "--minimum-axis-seeds", type=int, default=None,
+        help="Override stopping_rule.minimum_axis_seeds (testing only).",
+    )
+
+    # ── mrm-report ────────────────────────────────────────────
+    mrm_p = subparsers.add_parser(
+        "mrm-report",
+        help=(
+            "Quarterly Model-Risk-Management report generator (prompt 60, "
+            "Wave 15). Informed by, not legally compliant with, OCC / Fed "
+            "SR 11-7. Subcommands: generate (assemble + render PDF) and "
+            "publish (write the rendered PDF to object storage and emit "
+            "an mrm_report_published event)."
+        ),
+    )
+    mrm_sub = mrm_p.add_subparsers(
+        dest="mrm_report_command",
+        required=True,
+        help="Subcommands",
+    )
+    mrm_gen = mrm_sub.add_parser(
+        "generate",
+        help="Assemble the quarterly report and render it to PDF via pdflatex.",
+    )
+    mrm_gen.add_argument(
+        "--quarter",
+        type=str,
+        required=True,
+        help="Quarter reference, e.g. 2026Q2.",
+    )
+    mrm_gen.add_argument(
+        "--output",
+        type=str,
+        required=True,
+        help="Destination path for the rendered PDF.",
+    )
+    mrm_gen.add_argument(
+        "--validation-study",
+        type=str,
+        default=None,
+        help="Path to a validation-study report JSON (prompt 44).",
+    )
+    mrm_gen.add_argument(
+        "--drift-telemetry",
+        type=str,
+        default=None,
+        help="Path to a calibration-drift telemetry JSON.",
+    )
+    mrm_gen.add_argument(
+        "--override-stats",
+        type=str,
+        default=None,
+        help="Path to a partner-override aggregate JSON.",
+    )
+    mrm_gen.add_argument(
+        "--anti-gaming-stats",
+        type=str,
+        default=None,
+        help="Path to an anti-gaming alert-rate aggregate JSON.",
+    )
+    mrm_gen.add_argument(
+        "--reproducibility-audit",
+        type=str,
+        default=None,
+        help="Path to a decision-reproducibility audit JSON.",
+    )
+    mrm_gen.add_argument(
+        "--backlog",
+        type=str,
+        default=None,
+        help="Override path to the MRM backlog YAML.",
+    )
+    mrm_gen.add_argument(
+        "--template",
+        type=str,
+        default=None,
+        help="Override path to the LaTeX Jinja2 template.",
+    )
+    mrm_gen.add_argument(
+        "--generated-at",
+        type=str,
+        default=None,
+        help="ISO-8601 generation timestamp (default: current UTC time).",
+    )
+    mrm_gen.add_argument(
+        "--tex-only",
+        action="store_true",
+        help="Emit the .tex source only (skip pdflatex).",
+    )
+    mrm_gen.add_argument(
+        "--log-output",
+        type=str,
+        default=None,
+        help="Optional path to write the captured pdflatex .log next to the PDF.",
+    )
+
+    mrm_pub = mrm_sub.add_parser(
+        "publish",
+        help=(
+            "Upload a previously rendered PDF to object storage and emit an "
+            "mrm_report_published event."
+        ),
+    )
+    mrm_pub.add_argument(
+        "--pdf",
+        type=str,
+        required=True,
+        help="Path to the rendered PDF.",
+    )
+    mrm_pub.add_argument(
+        "--quarter",
+        type=str,
+        required=True,
+        help="Quarter reference the PDF covers (e.g. 2026Q2).",
+    )
+    mrm_pub.add_argument(
+        "--storage-key",
+        type=str,
+        default=None,
+        help="Override storage key (default: model_risk/<quarter>/report.pdf).",
+    )
+    mrm_pub.add_argument(
+        "--actor",
+        type=str,
+        default="cli",
+        help="Actor publishing the report (recorded on the event).",
+    )
+
+    # ── policy ────────────────────────────────────────────────
+    policy_p = subparsers.add_parser(
+        "policy",
+        help=(
+            "Reserve-allocation optimizer + decision-policy parameter "
+            "proposals (prompt 70). 'policy propose' runs the deterministic "
+            "optimizer + 90-day backtest replay against the validation study; "
+            "'policy review' prints the diff / backtest delta; "
+            "'policy approve' (admin) flips the proposal to approved and emits "
+            "the policy_parameter_approved.v1 event. Promotion to the running "
+            "decision policy is a separate, explicit step."
+        ),
+    )
+    policy_sub = policy_p.add_subparsers(
+        dest="policy_command", required=True, help="Subcommands"
+    )
+    policy_propose = policy_sub.add_parser(
+        "propose",
+        help=(
+            "Run the optimizer + backtest replay and write a proposal JSON. "
+            "Refuses if a proposal for any of the proposed domains has been "
+            "filed within the last 30 days."
+        ),
+    )
+    policy_propose.add_argument(
+        "--inputs",
+        type=str,
+        required=True,
+        help=(
+            "Path to a JSON file with keys: portfolio_snapshot, "
+            "validation_study, historical_rows, projected_pipeline_volume, "
+            "false_pass_budget_usd."
+        ),
+    )
+    policy_propose.add_argument(
+        "--validation-study",
+        type=str,
+        required=False,
+        help=(
+            "Override path to the validation study JSON (otherwise read "
+            "from --inputs.validation_study)."
+        ),
+    )
+    policy_propose.add_argument(
+        "--output",
+        type=str,
+        required=True,
+        help="Destination path for the canonical proposal JSON.",
+    )
+    policy_propose.add_argument(
+        "--seed", type=int, default=0, help="Optimizer seed (default: 0)."
+    )
+    policy_propose.add_argument(
+        "--proposed-by",
+        type=str,
+        default="cli",
+        help="Operator id recorded on the proposal row (default: cli).",
+    )
+    policy_propose.add_argument(
+        "--rationale",
+        type=str,
+        default="",
+        help="Operator rationale (>= 20 chars). Defaults to a stock string.",
+    )
+    policy_propose.add_argument(
+        "--prefer-scipy",
+        action="store_true",
+        help="Use scipy.optimize.minimize when available (else falls back to grid).",
+    )
+
+    policy_review = policy_sub.add_parser(
+        "review",
+        help="Render the proposed-vs-current diff for a stored proposal.",
+    )
+    policy_review.add_argument(
+        "--proposal-id", type=str, required=True, help="Proposal id."
+    )
+
+    policy_approve = policy_sub.add_parser(
+        "approve",
+        help=(
+            "Approve a proposal (admin only). Emits "
+            "policy_parameter_approved.v1. Does NOT promote the running "
+            "decision policy."
+        ),
+    )
+    policy_approve.add_argument(
+        "--proposal-id", type=str, required=True, help="Proposal id."
+    )
+    policy_approve.add_argument(
+        "--principal-role",
+        type=str,
+        default="",
+        help=(
+            "Principal role for the admin-gate check (must be 'admin'). "
+            "Set via env COHERENCE_FUND_CLI_ROLE in non-interactive contexts."
+        ),
+    )
+    policy_approve.add_argument(
+        "--principal-id",
+        type=str,
+        default="cli",
+        help="Principal id recorded on the approval row.",
+    )
+
     # ── gui ───────────────────────────────────────────────────
     subparsers.add_parser("gui", help="Launch the graphical interface")
 
@@ -907,6 +1919,8 @@ def main():
         _cmd_revoke_fund_api_key(args)
     elif args.command == "rotate-fund-api-key":
         _cmd_rotate_fund_api_key(args)
+    elif args.command == "api-keys":
+        _cmd_api_keys(args)
     elif args.command == "prompt-registry":
         _cmd_prompt_registry(args)
     elif args.command == "portfolio-state":
@@ -919,6 +1933,28 @@ def main():
         _cmd_application(args)
     elif args.command == "workflow":
         _cmd_workflow(args)
+    elif args.command == "db":
+        _cmd_db(args)
+    elif args.command == "secrets":
+        _cmd_secrets(args)
+    elif args.command == "config":
+        _cmd_config(args)
+    elif args.command == "flags":
+        _cmd_flags(args)
+    elif args.command == "historical-corpus":
+        _cmd_historical_corpus(args)
+    elif args.command == "outcomes":
+        _cmd_outcomes(args)
+    elif args.command == "validation-study":
+        _cmd_validation_study(args)
+    elif args.command == "leakage":
+        _cmd_leakage(args)
+    elif args.command == "replication":
+        _cmd_replication(args)
+    elif args.command == "mrm-report":
+        _cmd_mrm_report(args)
+    elif args.command == "policy":
+        _cmd_policy(args)
     elif args.command == "gui":
         _cmd_gui()
 
@@ -1788,6 +2824,243 @@ def _cmd_replay_scoring_jobs(args):
         db.close()
 
 
+def _cmd_api_keys(args):
+    """Dispatch ``api-keys create | list | revoke | rotate`` (v2 service-account keys)."""
+    sub = getattr(args, "api_keys_command", None)
+    if sub == "create":
+        _cmd_api_keys_create(args)
+    elif sub == "list":
+        _cmd_api_keys_list(args)
+    elif sub == "revoke":
+        _cmd_api_keys_revoke(args)
+    elif sub == "rotate":
+        _cmd_api_keys_rotate(args)
+    else:
+        print("Error: unknown api-keys subcommand", file=sys.stderr)
+        sys.exit(2)
+
+
+def _parse_expires(raw):
+    if not raw:
+        return None
+    from datetime import datetime, timezone
+    try:
+        dt = datetime.strptime(raw, "%Y-%m-%d")
+    except ValueError as exc:
+        print(f"Error: --expires must be YYYY-MM-DD ({exc})", file=sys.stderr)
+        sys.exit(2)
+    return dt.replace(tzinfo=timezone.utc)
+
+
+def _cmd_api_keys_create(args):
+    from sqlalchemy import select
+
+    from coherence_engine.server.fund import models
+    from coherence_engine.server.fund.database import SessionLocal
+    from coherence_engine.server.fund.repositories.api_key_repository import (
+        ApiKeyRepository,
+    )
+    from coherence_engine.server.fund.services.api_key_service import (
+        ApiKeyService,
+        KNOWN_SCOPES,
+    )
+    import uuid
+
+    unknown = [s for s in (args.scope or []) if s not in KNOWN_SCOPES]
+    if unknown:
+        print(
+            f"Error: unknown scope(s): {', '.join(sorted(unknown))}. "
+            f"Known scopes: {', '.join(sorted(KNOWN_SCOPES))}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    expires_at = _parse_expires(args.expires)
+    db = SessionLocal()
+    try:
+        acct = db.execute(
+            select(models.ServiceAccount).where(
+                models.ServiceAccount.name == args.account
+            )
+        ).scalar_one_or_none()
+        if acct is None:
+            from datetime import datetime, timezone
+            acct = models.ServiceAccount(
+                id=f"sa_{uuid.uuid4().hex[:12]}",
+                name=args.account,
+                description=args.description or "",
+                owner_email=args.owner_email or "",
+                created_at=datetime.now(tz=timezone.utc),
+            )
+            db.add(acct)
+            db.flush()
+            print(f"# created service account: {acct.name} (id={acct.id})", file=sys.stderr)
+        svc = ApiKeyService()
+        created = svc.create_key_v2(
+            db,
+            service_account_id=acct.id,
+            scopes=args.scope,
+            created_by="cli",
+            label=args.label or "",
+            expires_at=expires_at,
+            rate_limit_per_minute=int(args.rate_limit_per_minute or 60),
+        )
+        repo = ApiKeyRepository(db)
+        repo.add_audit_event(
+            action="api_key_v2_create_cli",
+            success=True,
+            actor="cli",
+            request_id="cli",
+            ip="local",
+            path="cli:api-keys create",
+            details={
+                "key_id": created.id,
+                "prefix": created.prefix,
+                "service_account_id": acct.id,
+                "scopes": list(created.scopes),
+            },
+            api_key_id=created.id,
+        )
+        db.commit()
+        print(f"id={created.id}")
+        print(f"prefix={created.prefix}")
+        print(f"service_account={acct.name}")
+        print(f"scopes={','.join(created.scopes)}")
+        print(
+            f"expires_at={created.expires_at.isoformat() if created.expires_at else ''}"
+        )
+        print(f"rate_limit_per_minute={created.rate_limit_per_minute}")
+        print(f"token={created.token}")
+        print(
+            "# WARNING: plaintext token shown once and never again. Store it now.",
+            file=sys.stderr,
+        )
+    finally:
+        db.close()
+
+
+def _cmd_api_keys_list(args):
+    import json as _json
+    from sqlalchemy import select
+
+    from coherence_engine.server.fund import models
+    from coherence_engine.server.fund.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        stmt = select(models.ApiKey).order_by(models.ApiKey.created_at.desc())
+        if args.account:
+            acct = db.execute(
+                select(models.ServiceAccount).where(
+                    models.ServiceAccount.name == args.account
+                )
+            ).scalar_one_or_none()
+            if acct is None:
+                print(f"Error: service account {args.account!r} not found", file=sys.stderr)
+                sys.exit(1)
+            stmt = stmt.where(models.ApiKey.service_account_id == acct.id)
+        rows = db.execute(stmt).scalars().all()
+        for r in rows:
+            scopes = _json.loads(r.scopes_json or "[]")
+            print(
+                "prefix={p}\tservice_account_id={sa}\tscopes={sc}\texpires_at={e}\trevoked_at={rv}\tlast_used_at={lu}".format(
+                    p=r.prefix or r.key_fingerprint,
+                    sa=r.service_account_id or "",
+                    sc=",".join(scopes),
+                    e=r.expires_at.isoformat() if r.expires_at else "",
+                    rv=r.revoked_at.isoformat() if r.revoked_at else "",
+                    lu=r.last_used_at.isoformat() if r.last_used_at else "",
+                )
+            )
+    finally:
+        db.close()
+
+
+def _cmd_api_keys_revoke(args):
+    from coherence_engine.server.fund.database import SessionLocal
+    from coherence_engine.server.fund.repositories.api_key_repository import (
+        ApiKeyRepository,
+    )
+    from coherence_engine.server.fund.services.api_key_service import ApiKeyService
+
+    db = SessionLocal()
+    try:
+        svc = ApiKeyService()
+        rec = svc.revoke_key_v2(db, args.prefix)
+        if rec is None:
+            print(f"Error: prefix {args.prefix!r} not found", file=sys.stderr)
+            sys.exit(1)
+        repo = ApiKeyRepository(db)
+        repo.add_audit_event(
+            action="api_key_v2_revoke_cli",
+            success=True,
+            actor="cli",
+            request_id="cli",
+            ip="local",
+            path="cli:api-keys revoke",
+            details={"prefix": args.prefix, "key_id": rec.id},
+            api_key_id=rec.id,
+        )
+        db.commit()
+        print(f"revoked={args.prefix}")
+    finally:
+        db.close()
+
+
+def _cmd_api_keys_rotate(args):
+    from coherence_engine.server.fund.database import SessionLocal
+    from coherence_engine.server.fund.repositories.api_key_repository import (
+        ApiKeyRepository,
+    )
+    from coherence_engine.server.fund.services.api_key_service import ApiKeyService
+
+    expires_at = _parse_expires(args.expires)
+    db = SessionLocal()
+    try:
+        svc = ApiKeyService()
+        new_key = svc.rotate_key_v2(
+            db,
+            prefix=args.prefix,
+            actor="cli",
+            grace_seconds=int(args.grace_seconds or 0),
+            expires_at=expires_at,
+        )
+        if new_key is None:
+            print(f"Error: prefix {args.prefix!r} not found", file=sys.stderr)
+            sys.exit(1)
+        repo = ApiKeyRepository(db)
+        repo.add_audit_event(
+            action="api_key_v2_rotate_cli",
+            success=True,
+            actor="cli",
+            request_id="cli",
+            ip="local",
+            path="cli:api-keys rotate",
+            details={
+                "old_prefix": args.prefix,
+                "new_prefix": new_key.prefix,
+                "new_key_id": new_key.id,
+                "grace_seconds": int(args.grace_seconds or 0),
+            },
+            api_key_id=new_key.id,
+        )
+        db.commit()
+        print(f"old_prefix={args.prefix}")
+        print(f"new_prefix={new_key.prefix}")
+        print(f"new_id={new_key.id}")
+        print(f"scopes={','.join(new_key.scopes)}")
+        print(
+            f"expires_at={new_key.expires_at.isoformat() if new_key.expires_at else ''}"
+        )
+        print(f"token={new_key.token}")
+        print(
+            "# WARNING: plaintext token shown once and never again. Store it now.",
+            file=sys.stderr,
+        )
+    finally:
+        db.close()
+
+
 def _cmd_create_fund_api_key(args):
     from coherence_engine.server.fund.database import SessionLocal
     from coherence_engine.server.fund.repositories.api_key_repository import ApiKeyRepository
@@ -2298,9 +3571,1012 @@ def _cmd_workflow(args):
         session.close()
 
 
+def _cmd_mrm_report(args):
+    """Dispatch ``mrm-report generate|publish`` (prompt 60).
+
+    The CLI is the *only* path that supplies wall-clock time to the
+    deterministic assembler; tests freeze this via ``--generated-at``.
+    """
+
+    import datetime as _dt
+    from pathlib import Path as _Path
+
+    from coherence_engine.server.fund.services import (
+        model_risk_report as mrm,
+        model_risk_renderer_pdf as mrm_pdf,
+    )
+
+    sub = getattr(args, "mrm_report_command", None)
+
+    if sub == "generate":
+        try:
+            quarter = mrm.QuarterRef.parse(args.quarter)
+        except mrm.MRMReportError as exc:
+            sys.stderr.write(f"error: {exc}\n")
+            sys.exit(2)
+
+        generated_at = args.generated_at or _dt.datetime.now(
+            tz=_dt.timezone.utc
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        inputs = mrm.MRMReportInputs(
+            quarter=quarter,
+            generated_at=generated_at,
+            validation_study_path=(
+                _Path(args.validation_study) if args.validation_study else None
+            ),
+            drift_telemetry_path=(
+                _Path(args.drift_telemetry) if args.drift_telemetry else None
+            ),
+            override_stats_path=(
+                _Path(args.override_stats) if args.override_stats else None
+            ),
+            anti_gaming_alert_stats_path=(
+                _Path(args.anti_gaming_stats) if args.anti_gaming_stats else None
+            ),
+            reproducibility_audit_path=(
+                _Path(args.reproducibility_audit)
+                if args.reproducibility_audit
+                else None
+            ),
+            backlog_path=(
+                _Path(args.backlog) if args.backlog else mrm.DEFAULT_BACKLOG_PATH
+            ),
+        )
+
+        try:
+            data = mrm.assemble_quarterly_report(inputs)
+        except mrm.MRMReportError as exc:
+            sys.stderr.write(f"error: {exc}\n")
+            sys.exit(2)
+
+        template_path = _Path(args.template) if args.template else None
+
+        if args.tex_only:
+            try:
+                tex = mrm_pdf.render_tex(data, template_path=template_path)
+            except mrm.MRMReportError as exc:
+                sys.stderr.write(f"error: {exc}\n")
+                sys.exit(2)
+            out = _Path(args.output)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(tex, encoding="utf-8")
+            sys.stdout.write(
+                json.dumps(
+                    {
+                        "wrote": str(out.resolve()),
+                        "kind": "tex",
+                        "input_digest": data.input_digest,
+                        "report_digest": data.report_digest(),
+                    },
+                    sort_keys=True,
+                )
+                + "\n"
+            )
+            return
+
+        try:
+            result = mrm_pdf.render_pdf(data, template_path=template_path)
+        except mrm_pdf.PdflatexNotInstalled as exc:
+            sys.stderr.write(f"error: {exc}\n")
+            sys.exit(3)
+        except mrm_pdf.PdflatexRenderError as exc:
+            sys.stderr.write(f"error: {exc}\n")
+            if args.log_output:
+                _Path(args.log_output).write_text(exc.log_text, encoding="utf-8")
+            sys.exit(2)
+
+        out = _Path(args.output)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(result.pdf_bytes)
+        if args.log_output:
+            _Path(args.log_output).write_text(result.log_text, encoding="utf-8")
+
+        sys.stdout.write(
+            json.dumps(
+                {
+                    "wrote": str(out.resolve()),
+                    "kind": "pdf",
+                    "pages": result.pages,
+                    "input_digest": data.input_digest,
+                    "report_digest": data.report_digest(),
+                    "size_bytes": len(result.pdf_bytes),
+                },
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        return
+
+    if sub == "publish":
+        try:
+            quarter = mrm.QuarterRef.parse(args.quarter)
+        except mrm.MRMReportError as exc:
+            sys.stderr.write(f"error: {exc}\n")
+            sys.exit(2)
+
+        pdf_path = _Path(args.pdf)
+        if not pdf_path.is_file():
+            sys.stderr.write(f"error: pdf file not found: {pdf_path}\n")
+            sys.exit(2)
+        pdf_bytes = pdf_path.read_bytes()
+
+        from coherence_engine.server.fund.services import object_storage as _os
+
+        key = (
+            args.storage_key
+            or f"model_risk/{quarter.label}/report.pdf"
+        )
+        try:
+            put_result = _os.put(key, pdf_bytes, content_type="application/pdf")
+        except _os.StorageError as exc:
+            sys.stderr.write(f"error: storage put failed: {exc}\n")
+            sys.exit(2)
+
+        from coherence_engine.server.fund.database import SessionLocal
+        from coherence_engine.server.fund.services.event_publisher import EventPublisher
+        import uuid as _uuid
+
+        event_emitted = False
+        emit_error = None
+        try:
+            session = SessionLocal()
+        except Exception as exc:  # pragma: no cover - DB optional in dev
+            session = None
+            emit_error = f"db_unavailable: {exc}"
+        if session is not None:
+            try:
+                publisher = EventPublisher(session)
+                publisher.publish(
+                    event_type="mrm_report_published",
+                    producer="mrm_report",
+                    trace_id=str(_uuid.uuid4()),
+                    idempotency_key=put_result.sha256,
+                    payload={
+                        "quarter": quarter.label,
+                        "storage_uri": put_result.uri,
+                        "sha256": put_result.sha256,
+                        "size_bytes": int(put_result.size),
+                        "actor": str(args.actor),
+                    },
+                )
+                session.commit()
+                event_emitted = True
+            except Exception as exc:
+                session.rollback()
+                emit_error = f"publish_failed: {exc}"
+            finally:
+                session.close()
+
+        sys.stdout.write(
+            json.dumps(
+                {
+                    "uri": put_result.uri,
+                    "sha256": put_result.sha256,
+                    "size": int(put_result.size),
+                    "event_emitted": event_emitted,
+                    "emit_error": emit_error,
+                },
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        return
+
+
 def _cmd_gui():
     from coherence_engine.gui import main as gui_main
     gui_main()
+
+
+def _cmd_db(args):
+    if args.db_command == "audit-migrations":
+        from coherence_engine.deploy.scripts import audit_migrations_postgres_parity as auditor
+
+        argv = []
+        if args.versions_dir:
+            argv += ["--versions-dir", args.versions_dir]
+        if args.write_registry:
+            argv += ["--write-registry"]
+        if args.registry_path:
+            argv += ["--registry-path", args.registry_path]
+        if args.json:
+            argv += ["--json"]
+        if args.audited_at:
+            argv += ["--audited-at", args.audited_at]
+        sys.exit(auditor.main(argv))
+    print(f"Unknown db subcommand: {args.db_command}", file=sys.stderr)
+    sys.exit(2)
+
+
+def _cmd_secrets(args):
+    if args.secrets_command == "manifest":
+        return _cmd_secrets_manifest(args)
+    if args.secrets_command == "resolve":
+        return _cmd_secrets_resolve(args)
+    print(f"Unknown secrets subcommand: {args.secrets_command}", file=sys.stderr)
+    sys.exit(2)
+
+
+def _cmd_secrets_manifest(args):
+    from coherence_engine.server.fund.services.secret_manager import (
+        SecretManager,
+    )
+    from coherence_engine.server.fund.services.secret_manifest import (
+        ManifestError,
+        MissingRequiredSecret,
+    )
+
+    from coherence_engine.server.fund.config import settings as _fund_settings
+    # secret_manifest still uses the legacy "production"/"development" tokens;
+    # map our canonical Settings tokens to the spelling it expects.
+    _ENV_LEGACY = {"prod": "production", "dev": "development", "test": "test", "staging": "staging"}
+    target_env = args.env.strip().lower() if args.env else _ENV_LEGACY[_fund_settings.environment]
+    resolver = SecretManager.from_env()
+    try:
+        report = resolver.verify_manifest(target_env)
+    except MissingRequiredSecret as exc:
+        # Production manifest verification failed — print the partial report
+        # by re-running with a non-prod env tag so operators see the table.
+        print(f"FAIL: missing required secrets in env={target_env}: {', '.join(exc.missing)}", file=sys.stderr)
+        if args.json:
+            # Resolve again in 'inspect' mode for the body.
+            inspect = resolver.verify_manifest("development") if target_env == "production" else None
+            if inspect is not None:
+                print(json.dumps(inspect.to_dict(), indent=2))
+        sys.exit(2)
+    except ManifestError as exc:
+        print(f"FAIL: manifest invalid: {exc}", file=sys.stderr)
+        sys.exit(2)
+
+    if args.json:
+        print(json.dumps(report.to_dict(), indent=2))
+        return
+
+    print(f"secret manifest (schema={report.schema_version}, env={report.env}):")
+    print(f"  resolved={report.resolved_count}  missing={report.missing_count}")
+    print()
+    name_w = max((len(e.name) for e in report.entries), default=4)
+    cat_w = max((len(e.category) for e in report.entries), default=8)
+    pol_w = max((len(e.policy) for e in report.entries), default=8)
+    header = f"  {'NAME':<{name_w}}  {'CATEGORY':<{cat_w}}  {'POLICY':<{pol_w}}  STATUS    BACKEND"
+    print(header)
+    print("  " + "-" * (len(header) - 2))
+    for entry in report.entries:
+        backend = entry.backend or "-"
+        print(
+            f"  {entry.name:<{name_w}}  {entry.category:<{cat_w}}  {entry.policy:<{pol_w}}  "
+            f"{entry.status:<8}  {backend}"
+        )
+    if report.missing_required:
+        print()
+        print(f"WARN: {len(report.missing_required)} prod_required secret(s) unresolved (env={report.env}):")
+        for name in report.missing_required:
+            print(f"  - {name}")
+
+
+def _cmd_secrets_resolve(args):
+    from coherence_engine.server.fund.services.secret_manager import (
+        SecretManager,
+    )
+
+    from coherence_engine.server.fund.services.env_gates import allow_print_secret_value
+    if not args.allow_unsafe_print:
+        print(
+            "Refusing to print a secret value. Pass --allow-unsafe-print to acknowledge.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if os.getenv("CONFIRM_PRINT_SECRET", "").strip() != "YES":
+        print(
+            "Refusing to print a secret value. Set CONFIRM_PRINT_SECRET=YES to confirm.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if not allow_print_secret_value():
+        print(
+            "Refusing to print a secret value in production. Run from a non-prod env.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    resolver = SecretManager.from_env()
+    value = resolver.get(args.name)
+    if value is None:
+        print(f"secret not found: {args.name}", file=sys.stderr)
+        sys.exit(1)
+    sys.stdout.write(value)
+    sys.stdout.write("\n")
+
+
+def _cmd_config(args):
+    if args.config_command == "audit":
+        return _cmd_config_audit(args)
+    if args.config_command == "show":
+        return _cmd_config_show(args)
+    print(f"Unknown config subcommand: {args.config_command}", file=sys.stderr)
+    sys.exit(2)
+
+
+def _cmd_config_audit(args):
+    import importlib.util
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    here = _Path(__file__).resolve().parent
+    auditor_path = here / "deploy" / "scripts" / "audit_twelve_factor.py"
+    mod_name = "_audit_twelve_factor_inproc"
+    spec = importlib.util.spec_from_file_location(mod_name, auditor_path)
+    mod = importlib.util.module_from_spec(spec)
+    _sys.modules[mod_name] = mod
+    spec.loader.exec_module(mod)
+
+    root = here
+    report = mod.audit(root)
+    payload = report.to_dict()
+    body = json.dumps(payload, indent=2, sort_keys=False)
+
+    if args.output:
+        _Path(args.output).write_text(body + "\n", encoding="utf-8")
+
+    if args.format == "json":
+        sys.stdout.write(body + "\n")
+    else:
+        s = payload["summary"]
+        sys.stdout.write(
+            f"twelve-factor audit: total={s['total']} "
+            f"error={s['by_severity'].get('error', 0)} "
+            f"warn={s['by_severity'].get('warn', 0)}\n"
+        )
+
+    if payload["summary"]["by_severity"].get("error", 0) > 0:
+        sys.exit(2)
+
+
+def _cmd_config_show(args):
+    from coherence_engine.server.fund.config import settings as _fund_settings
+
+    redacted = _fund_settings.to_redacted_dict()
+    if args.format == "json":
+        sys.stdout.write(json.dumps(redacted, indent=2, sort_keys=True, default=str) + "\n")
+        return
+    name_w = max(len(k) for k in redacted)
+    for k in sorted(redacted):
+        sys.stdout.write(f"{k:<{name_w}}  {redacted[k]}\n")
+
+
+def _cmd_flags(args):
+    from coherence_engine.server.fund.services.feature_flags import (
+        FeatureFlags,
+        FlagTypeError,
+        MissingFlag,
+        RestrictedFlagViolation,
+        jsonl_event_emitter,
+    )
+
+    flags = FeatureFlags(event_publisher=jsonl_event_emitter())
+
+    if args.flags_command == "list":
+        rows = flags.list_flags()
+        if args.format == "json":
+            sys.stdout.write(json.dumps(rows, indent=2, sort_keys=True, default=str) + "\n")
+            return
+        key_w = max((len(r["key"]) for r in rows), default=3)
+        type_w = max((len(r["type"]) for r in rows), default=4)
+        sys.stdout.write(
+            f"{'KEY':<{key_w}}  {'TYPE':<{type_w}}  {'VALUE':<10}  {'SOURCE':<14}  RESTRICTED\n"
+        )
+        for row in rows:
+            sys.stdout.write(
+                f"{row['key']:<{key_w}}  {row['type']:<{type_w}}  "
+                f"{row['value']!s:<10}  {row['source']:<14}  {row['restricted']}\n"
+            )
+        return
+
+    if args.flags_command == "set":
+        try:
+            spec = flags.spec(args.key)
+        except MissingFlag as exc:
+            sys.stderr.write(f"error: {exc}\n")
+            sys.exit(2)
+        try:
+            if spec.restricted:
+                if not args.actor or not args.reason:
+                    sys.stderr.write(
+                        "error: restricted flags require --actor and --reason\n"
+                    )
+                    sys.exit(2)
+                row = flags.set_restricted(
+                    args.key,
+                    args.value,
+                    actor=args.actor,
+                    reason=args.reason,
+                    source="cli",
+                )
+            else:
+                row = flags.set_unrestricted(
+                    args.key,
+                    args.value,
+                    actor=args.actor,
+                    reason=args.reason,
+                )
+        except (FlagTypeError, RestrictedFlagViolation) as exc:
+            sys.stderr.write(f"error: {exc}\n")
+            sys.exit(2)
+        sys.stdout.write(json.dumps(row, indent=2, sort_keys=True, default=str) + "\n")
+        return
+
+
+def _cmd_historical_corpus(args):
+    """Dispatch historical-corpus ingest|stat|validate."""
+
+    from coherence_engine.server.fund.services import historical_corpus as hc
+
+    sub = getattr(args, "historical_corpus_command", None)
+    manifest_arg = getattr(args, "manifest", None)
+
+    if sub == "ingest":
+        report = hc.ingest(
+            args.path,
+            source=args.source,
+            dry_run=not args.apply,
+            manifest_path=manifest_arg,
+        )
+        sys.stdout.write(
+            json.dumps(report.to_dict(), indent=2, sort_keys=True) + "\n"
+        )
+        if report.rows_rejected and not args.apply:
+            sys.exit(0)
+        return
+
+    if sub == "stat":
+        summary = hc.stat(manifest_path=manifest_arg)
+        sys.stdout.write(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+        return
+
+    if sub == "validate":
+        report = hc.validate(manifest_path=manifest_arg)
+        sys.stdout.write(
+            json.dumps(report.to_dict(), indent=2, sort_keys=True) + "\n"
+        )
+        if report.rows_failed:
+            sys.exit(2)
+        return
+
+
+def _cmd_outcomes(args):
+    """Dispatch outcomes attach|audit|export."""
+
+    from coherence_engine.server.fund.services import outcome_labeling as ol
+
+    sub = getattr(args, "outcomes_command", None)
+
+    if sub == "attach":
+        if args.row == "-":
+            payload = sys.stdin.read()
+        else:
+            with open(args.row, "r", encoding="utf-8") as fh:
+                payload = fh.read()
+        try:
+            row = json.loads(payload)
+        except json.JSONDecodeError as exc:
+            sys.stderr.write(f"error: --row payload is not valid JSON: {exc}\n")
+            sys.exit(2)
+        if not isinstance(row, dict):
+            sys.stderr.write("error: --row payload must be a JSON object\n")
+            sys.exit(2)
+        try:
+            ol.attach_outcome(args.pitch_id, row, outcomes_path=args.outcomes)
+        except ol.OutcomeSchemaError as exc:
+            sys.stderr.write(f"error: {exc}\n")
+            sys.exit(2)
+        sys.stdout.write(
+            json.dumps(
+                {"attached": True, "pitch_id": args.pitch_id}, sort_keys=True
+            )
+            + "\n"
+        )
+        return
+
+    if sub == "audit":
+        report = ol.audit(
+            manifest_path=args.manifest, outcomes_path=args.outcomes
+        )
+        sys.stdout.write(
+            json.dumps(report.to_dict(), indent=2, sort_keys=True) + "\n"
+        )
+        if not report.ok:
+            sys.exit(2)
+        return
+
+    if sub == "export":
+        frame = ol.export(
+            manifest_path=args.manifest,
+            outcomes_path=args.outcomes,
+            include_unknown=args.include_unknown,
+        )
+        sys.stdout.write(json.dumps(frame, indent=2, sort_keys=True) + "\n")
+        return
+
+
+def _cmd_validation_study(args):
+    """Dispatch validation-study run|report (prompt 44)."""
+
+    from pathlib import Path as _Path
+
+    from coherence_engine.server.fund.services import (
+        validation_report as vr,
+        validation_study as vs,
+    )
+
+    sub = getattr(args, "validation_study_command", None)
+
+    if sub == "run":
+        config = vs.StudyConfig(
+            preregistration_path=(
+                _Path(args.preregistration)
+                if args.preregistration
+                else vs.DEFAULT_PREREGISTRATION_PATH
+            ),
+            corpus_manifest_path=_Path(args.manifest) if args.manifest else None,
+            outcomes_path=_Path(args.outcomes) if args.outcomes else None,
+            coherence_scores_path=_Path(args.scores) if args.scores else None,
+            output_path=_Path(args.output),
+            seed=int(args.seed),
+            bootstrap_iters=int(args.bootstrap_iters),
+        )
+        try:
+            report = vs.run_study(config)
+        except vs.InsufficientSampleError as exc:
+            sys.stderr.write(f"error: {exc}\n")
+            sys.exit(2)
+        except vs.ValidationStudyError as exc:
+            sys.stderr.write(f"error: {exc}\n")
+            sys.exit(2)
+        sys.stdout.write(
+            json.dumps(
+                {
+                    "wrote": str(_Path(args.output).resolve()),
+                    "report_digest": report.report_digest(),
+                    "n_known_outcome": report.n_known_outcome,
+                },
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        return
+
+    if sub == "report":
+        try:
+            md = vr.render_from_file(args.report_in)
+        except (FileNotFoundError, ValueError) as exc:
+            sys.stderr.write(f"error: {exc}\n")
+            sys.exit(2)
+        sys.stdout.write(md + "\n")
+        return
+
+
+def _cmd_leakage(args):
+    """Dispatch ``leakage audit`` (prompt 45)."""
+
+    from pathlib import Path as _Path
+
+    from coherence_engine.server.fund.services import leakage_audit as la
+    from coherence_engine.server.fund.services import historical_corpus as hc
+
+    sub = getattr(args, "leakage_command", None)
+    if sub != "audit":
+        sys.stderr.write("error: leakage subcommand required (audit)\n")
+        sys.exit(2)
+
+    manifest_path = (
+        _Path(args.manifest) if args.manifest else hc.DEFAULT_MANIFEST_PATH
+    )
+    corpus = []
+    if manifest_path.is_file():
+        with manifest_path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                try:
+                    corpus.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+
+    cfg = la.AuditConfig(
+        corpus=tuple(corpus),
+        feature_extractors=tuple(getattr(args, "features", None) or ()),
+        training_artifacts_index_path=(
+            _Path(args.training_artifacts_index)
+            if args.training_artifacts_index
+            else None
+        ),
+        train_end=args.train_end,
+        buffer_year=int(args.buffer_year),
+        holdout_start=args.holdout_start,
+        buffer_override_rationale=args.buffer_override_rationale,
+    )
+
+    try:
+        report = la.audit(cfg)
+    except la.TrainingArtifactsIndexError as exc:
+        sys.stderr.write(f"error: {exc}\n")
+        sys.exit(2)
+
+    payload = report.to_dict()
+    payload["audit_digest"] = report.audit_digest
+    out_text = json.dumps(payload, sort_keys=True, indent=2)
+    if args.output:
+        out_path = _Path(args.output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(out_text + "\n", encoding="utf-8")
+    sys.stdout.write(out_text + "\n")
+    if not report.passed:
+        sys.stderr.write(
+            f"error: {la.LEAKAGE_DETECTED}: "
+            + "; ".join(report.failed_assertions)
+            + "\n"
+        )
+        sys.exit(2)
+    return
+
+
+def _cmd_replication(args):
+    """Dispatch ``replication <subcommand>`` (prompts 47–49, Wave 13)."""
+
+    sub = getattr(args, "replication_command", None)
+    if sub == "cosine-paradox":
+        _cmd_replication_cosine_paradox(args)
+        return
+    if sub == "c-hat-stability":
+        _cmd_replication_c_hat_stability(args)
+        return
+    if sub == "hoyer-vs-cosine":
+        _cmd_replication_hoyer_vs_cosine(args)
+        return
+    if sub == "reverse-marxism-rigor":
+        _cmd_replication_reverse_marxism_rigor(args)
+        return
+    sys.stderr.write(
+        "error: replication subcommand required "
+        "(cosine-paradox | c-hat-stability | hoyer-vs-cosine | "
+        "reverse-marxism-rigor)\n"
+    )
+    sys.exit(2)
+
+
+def _cmd_replication_cosine_paradox(args):
+    from coherence_engine.Experiments.Cosine_Paradox_Replication import (
+        run_replication as cp,
+    )
+
+    if not args.dry_run and not args.cosines_path and not args.dataset_path:
+        sys.stderr.write(
+            "error: replication cosine-paradox requires one of "
+            "--dry-run, --cosines, or --dataset\n"
+        )
+        sys.exit(2)
+
+    config = cp._config_from_args(args)
+    try:
+        report = cp.run_replication(config)
+    except cp.InsufficientSampleError as exc:
+        sys.stderr.write(str(exc) + "\n")
+        sys.exit(3)
+    except cp.ReplicationError as exc:
+        sys.stderr.write(f"error: {exc}\n")
+        sys.exit(1)
+
+    from pathlib import Path as _Path
+
+    canonical = report.to_canonical_bytes()
+    if args.output:
+        out_path = _Path(args.output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(canonical)
+    sys.stdout.write(canonical.decode("ascii"))
+    sys.stdout.write("\n")
+
+
+def _cmd_replication_hoyer_vs_cosine(args):
+    from coherence_engine.Experiments.Hoyer_vs_Cosine import (
+        run_comparison as hvc,
+    )
+
+    if not args.dry_run and not args.corpus_path:
+        sys.stderr.write(
+            "error: replication hoyer-vs-cosine requires one of "
+            "--dry-run or --corpus\n"
+        )
+        sys.exit(2)
+
+    config = hvc._config_from_args(args)
+    try:
+        report = hvc.run_comparison(config)
+    except hvc.InsufficientEvalSampleError as exc:
+        sys.stderr.write(str(exc) + "\n")
+        sys.exit(3)
+    except hvc.ComparisonError as exc:
+        sys.stderr.write(f"error: {exc}\n")
+        sys.exit(1)
+
+    from pathlib import Path as _Path
+
+    canonical = report.to_canonical_bytes()
+    if args.output:
+        out_path = _Path(args.output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(canonical)
+    sys.stdout.write(canonical.decode("ascii"))
+    sys.stdout.write("\n")
+
+
+def _cmd_replication_reverse_marxism_rigor(args):
+    from coherence_engine.Experiments.Reverse_Marxism_Rigor import (
+        run_rigor_study as rmr,
+    )
+
+    if not args.dry_run and not args.corpus_path:
+        sys.stderr.write(
+            "error: replication reverse-marxism-rigor requires one of "
+            "--dry-run or --corpus\n"
+        )
+        sys.exit(2)
+
+    config = rmr._config_from_args(args)
+    try:
+        report = rmr.run_rigor_study(config)
+    except (rmr.InsufficientHoldoutError, rmr.InsufficientAxisSeedsError) as exc:
+        sys.stderr.write(str(exc) + "\n")
+        sys.exit(3)
+    except rmr.RigorError as exc:
+        sys.stderr.write(f"error: {exc}\n")
+        sys.exit(1)
+
+    from pathlib import Path as _Path
+
+    canonical = report.to_canonical_bytes()
+    if args.output:
+        out_path = _Path(args.output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(canonical)
+    sys.stdout.write(canonical.decode("ascii"))
+    sys.stdout.write("\n")
+
+
+def _cmd_replication_c_hat_stability(args):
+    from coherence_engine.Experiments.Contradiction_Direction_Stability import (
+        run_stability_study as chs,
+    )
+
+    if not args.dry_run and not args.corpus_path:
+        sys.stderr.write(
+            "error: replication c-hat-stability requires one of "
+            "--dry-run or --corpus\n"
+        )
+        sys.exit(2)
+
+    config = chs._config_from_args(args)
+    try:
+        report = chs.run_stability_study(config)
+    except chs.InsufficientDomainSampleError as exc:
+        sys.stderr.write(str(exc) + "\n")
+        sys.exit(3)
+    except chs.StabilityError as exc:
+        sys.stderr.write(f"error: {exc}\n")
+        sys.exit(1)
+
+    from pathlib import Path as _Path
+
+    canonical = report.to_canonical_bytes()
+    if args.output:
+        out_path = _Path(args.output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(canonical)
+    sys.stdout.write(canonical.decode("ascii"))
+    sys.stdout.write("\n")
+
+
+def _cmd_policy(args):
+    """Dispatch ``policy propose|review|approve`` (prompt 70).
+
+    Exit codes:
+      0  -- success.
+      2  -- input file missing / invalid; rate-limit hit; admin role
+            check failed; proposal id not found.
+    """
+
+    sub = getattr(args, "policy_command", None)
+    if sub == "propose":
+        return _cmd_policy_propose(args)
+    if sub == "review":
+        return _cmd_policy_review(args)
+    if sub == "approve":
+        return _cmd_policy_approve(args)
+    print(f"Error: unknown policy subcommand {sub!r}", file=sys.stderr)
+    sys.exit(2)
+
+
+def _cmd_policy_propose(args):
+    from pathlib import Path as _Path
+
+    from coherence_engine.server.fund.database import SessionLocal, Base, engine
+    from coherence_engine.server.fund.services import reserve_optimizer as ro
+    from coherence_engine.server.fund.services.policy_parameter_proposals import (
+        PolicyParameterProposalService,
+        ProposalError,
+    )
+
+    inputs_path = _Path(args.inputs)
+    if not inputs_path.is_file():
+        print(f"Error: --inputs path not found: {inputs_path}", file=sys.stderr)
+        sys.exit(2)
+    try:
+        payload = json.loads(inputs_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        print(f"Error: --inputs is not valid JSON: {exc}", file=sys.stderr)
+        sys.exit(2)
+    if not isinstance(payload, dict):
+        print("Error: --inputs JSON must be an object", file=sys.stderr)
+        sys.exit(2)
+
+    if args.validation_study:
+        vs_path = _Path(args.validation_study)
+        if not vs_path.is_file():
+            print(
+                f"Error: --validation-study path not found: {vs_path}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        try:
+            payload["validation_study"] = json.loads(
+                vs_path.read_text(encoding="utf-8")
+            )
+        except json.JSONDecodeError as exc:
+            print(
+                f"Error: --validation-study is not valid JSON: {exc}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+
+    inputs = ro.OptimizerInputs.from_payload(
+        portfolio_snapshot=payload.get("portfolio_snapshot") or {},
+        validation_study=payload.get("validation_study") or {},
+        historical_rows=payload.get("historical_rows") or [],
+        projected_pipeline_volume=int(payload.get("projected_pipeline_volume") or 0),
+        false_pass_budget_usd=float(payload.get("false_pass_budget_usd") or 0.0),
+        seed=int(args.seed),
+    )
+    if args.prefer_scipy:
+        # OptimizerInputs is frozen; rebuild with the flag flipped
+        inputs = ro.OptimizerInputs(
+            portfolio_snapshot=inputs.portfolio_snapshot,
+            validation_study=inputs.validation_study,
+            historical_rows=inputs.historical_rows,
+            projected_pipeline_volume=inputs.projected_pipeline_volume,
+            domains=inputs.domains,
+            false_pass_budget_usd=inputs.false_pass_budget_usd,
+            seed=inputs.seed,
+            grid_size=inputs.grid_size,
+            cost_overrides=inputs.cost_overrides,
+            prefer_scipy=True,
+        )
+
+    try:
+        result = ro.optimize(inputs)
+    except ro.ReserveOptimizerError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(2)
+
+    canonical = result.to_canonical_bytes()
+    out_path = _Path(args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_bytes(canonical)
+
+    rationale = (args.rationale or "").strip()
+    if not rationale:
+        rationale = (
+            "Optimizer-proposed parameters; see backtest delta in the "
+            "attached canonical JSON for pass-rate, false-pass exposure, "
+            "and reserve coverage changes."
+        )
+
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        svc = PolicyParameterProposalService(db)
+        try:
+            row = svc.create(
+                proposed_by=str(args.proposed_by or "cli"),
+                parameters=result.to_canonical_dict(),
+                rationale=rationale,
+                backtest_report_uri=str(out_path.resolve()),
+            )
+            db.commit()
+        except ProposalError as exc:
+            db.rollback()
+            print(f"Error: {exc.code}: {exc.message}", file=sys.stderr)
+            sys.exit(2)
+        proposal_id = row.id
+    finally:
+        db.close()
+
+    summary = {
+        "proposal_id": proposal_id,
+        "report_path": str(out_path.resolve()),
+        "report_digest": result.report_digest(),
+        "optimizer_method": result.optimizer_method,
+        "delta": result.delta.to_dict(),
+    }
+    sys.stdout.write(
+        json.dumps(summary, sort_keys=True, separators=(",", ":")) + "\n"
+    )
+    return 0
+
+
+def _cmd_policy_review(args):
+    from coherence_engine.server.fund.database import SessionLocal, Base, engine
+    from coherence_engine.server.fund.services.policy_parameter_proposals import (
+        PolicyParameterProposalService,
+        ProposalNotFound,
+    )
+
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        svc = PolicyParameterProposalService(db)
+        try:
+            review = svc.render_review(str(args.proposal_id))
+        except ProposalNotFound as exc:
+            print(f"Error: {exc.code}: {exc.message}", file=sys.stderr)
+            sys.exit(2)
+    finally:
+        db.close()
+    sys.stdout.write(
+        json.dumps(review, sort_keys=True, separators=(",", ":")) + "\n"
+    )
+    return 0
+
+
+def _cmd_policy_approve(args):
+    from coherence_engine.server.fund.database import SessionLocal, Base, engine
+    from coherence_engine.server.fund.services.policy_parameter_proposals import (
+        PolicyParameterProposalService,
+        ProposalError,
+    )
+
+    role = args.principal_role or os.environ.get("COHERENCE_FUND_CLI_ROLE", "")
+    principal = {"id": str(args.principal_id or "cli"), "role": str(role or "")}
+
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        svc = PolicyParameterProposalService(db)
+        try:
+            row = svc.approve(str(args.proposal_id), principal=principal)
+            db.commit()
+        except ProposalError as exc:
+            db.rollback()
+            # PROPOSAL_FORBIDDEN -> classic 403 spirit; surface as exit 2
+            print(f"Error: {exc.code}: {exc.message}", file=sys.stderr)
+            sys.exit(2)
+        out = {
+            "proposal_id": row.id,
+            "status": row.status,
+            "approved_by": row.approved_by or "",
+            "approved_at": (
+                row.approved_at.isoformat().replace("+00:00", "Z")
+                if row.approved_at
+                else ""
+            ),
+        }
+    finally:
+        db.close()
+    sys.stdout.write(
+        json.dumps(out, sort_keys=True, separators=(",", ":")) + "\n"
+    )
+    return 0
 
 
 if __name__ == "__main__":

@@ -1,0 +1,64 @@
+---
+title: "Contradiction Direction via Householder Reflection"
+summary: "Given two sentences that contradict each other, we can recover the contested axis by solving for the Householder reflection that maps one embedding to the other. The reflection direction is interpretable as the contradiction's semantic axis."
+authors:
+  - "Coherence Engine Research"
+published: "2026-02-25"
+status: "preliminary"
+tags:
+  - "Householder"
+  - "reflection"
+  - "direction"
+  - "embeddings"
+citation: "Coherence Engine Research (2026). Contradiction Direction via Householder Reflection. Coherence Engine Working Paper CE-2026-02."
+---
+
+## Motivation
+
+The [cosine paradox](/research/cosine_paradox) showed that pairwise similarity hides contradiction. The complementary question is: when two embeddings *do* encode a contradiction, can we recover the *direction* along which they disagree?
+
+A clean candidate: the Householder reflection that maps one embedding to the other.
+
+## The Householder construction
+
+For two unit vectors $\hat{\mathbf{u}}$ and $\hat{\mathbf{v}}$ with $\hat{\mathbf{u}} \neq \hat{\mathbf{v}}$, define
+
+$$
+\hat{\mathbf{n}} = \frac{\hat{\mathbf{u}} - \hat{\mathbf{v}}}{\lVert \hat{\mathbf{u}} - \hat{\mathbf{v}} \rVert}.
+$$
+
+The Householder reflection across the hyperplane orthogonal to $\hat{\mathbf{n}}$ is
+
+$$
+H = I - 2\,\hat{\mathbf{n}}\hat{\mathbf{n}}^{\!\top},
+$$
+
+with $H\hat{\mathbf{u}} = \hat{\mathbf{v}}$. The vector $\hat{\mathbf{n}}$ is the **contradiction direction** — the axis we have to flip the sentence across to turn one claim into its opposite.
+
+## Why this is the right object
+
+- **It is unique up to sign.** The reflection that maps $\hat{\mathbf{u}}$ to $\hat{\mathbf{v}}$ is determined; its mirror plane is a single hyperplane.
+- **It is interpretable.** Decoding the nearest concept words to $\hat{\mathbf{n}}$ surfaces the contested axis. In the capital-flow example from the cosine paradox paper, the top decode is "exploitation / enrichment / direction-of-value-flow." The axis names itself.
+- **It composes.** A long argument is many sentence pairs; the average $\hat{\mathbf{n}}$ across pairs is a reading of the argument's principal contested axis.
+
+## Sanity checks
+
+We ran Householder recovery on 50 hand-curated contradiction pairs from political philosophy texts (left/right framings of the same issue). For each pair, we computed $\hat{\mathbf{n}}$ and found its top-5 nearest concept words in the encoder's vocabulary. Three independent annotators rated whether the surfaced concept matched the contested axis they would name.
+
+| Metric                                  | Value |
+|------------------------------------------|-------|
+| Pairs where ≥2 of 3 annotators agreed   | 41/50 |
+| Mean cosine of $\hat{\mathbf{n}}$ to annotator-supplied axis | 0.63 |
+| Pairs with zero recoverable axis        | 4/50  |
+
+The four failure cases were all sentence pairs whose disagreement was structural (one denied a presupposition the other relied on) rather than directional.
+
+## How this feeds the engine
+
+Layer 4 (embedding geometry) replaces "high cosine = similar" with a richer triple: **(topic similarity, contradiction direction, contradiction magnitude)**. The contradiction direction enters the composite score by reducing the weight of layered claims that all flip across the *same* axis — a long argument that contradicts itself in one direction is more incoherent than one that contradicts itself in many directions, because it concentrates the failure mode.
+
+## Limits
+
+- Reflection assumes a single contested axis between two claims. Multi-axis disagreement is currently approximated by sequential reflections; the right object there is a higher-dimensional rotation, not a reflection.
+- The annotator agreement rate is moderate (82% on a small sample). The procedure is not a finished detector.
+- Like every other layer, this contributes to a composite coherence score whose predictive validity is unproven. The reflection is a structural diagnostic, not a forecast.

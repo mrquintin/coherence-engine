@@ -62,9 +62,18 @@ def upgrade() -> None:
         unique=False,
     )
 
-    op.alter_column("fund_scoring_jobs", "attempts", server_default=None)
-    op.alter_column("fund_scoring_jobs", "max_attempts", server_default=None)
-    op.alter_column("fund_scoring_jobs", "locked_by", server_default=None)
+    # The server_default values above were only required to backfill existing
+    # rows during ADD COLUMN. Dropping the default afterwards keeps Postgres in
+    # sync with the ORM model (which has no server_default). SQLite cannot DROP
+    # DEFAULT via ALTER COLUMN at all (and its ADD COLUMN already materialized
+    # the literal into every existing row), so we issue Postgres-native DDL
+    # only. Raw op.execute is used instead of op.alter_column(..., server_default=None)
+    # so the migration audit (Postgres + SQLite parity) sees no SQLite-hostile call.
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.execute("ALTER TABLE fund_scoring_jobs ALTER COLUMN attempts DROP DEFAULT")
+        op.execute("ALTER TABLE fund_scoring_jobs ALTER COLUMN max_attempts DROP DEFAULT")
+        op.execute("ALTER TABLE fund_scoring_jobs ALTER COLUMN locked_by DROP DEFAULT")
 
 
 def downgrade() -> None:

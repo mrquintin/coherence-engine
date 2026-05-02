@@ -25,13 +25,13 @@ _REPO_PARENT = _REPO_ROOT.parent
 if str(_REPO_PARENT) not in sys.path:
     sys.path.insert(0, str(_REPO_PARENT))
 
-from coherence_engine.server.fund.services.calibration_export import (  # noqa: E402
+from coherence_engine.server.fund.services.calibration_export import (
     build_export_rows,
     export_rows_to_json,
     export_rows_to_jsonl,
     load_outcomes_annotations,
 )
-from coherence_engine.server.fund.services.uncertainty_calibration import (  # noqa: E402
+from coherence_engine.server.fund.services.uncertainty_calibration import (
     load_historical_records,
 )
 

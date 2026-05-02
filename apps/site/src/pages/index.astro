@@ -1,0 +1,43 @@
+---
+import BaseLayout from '~/layouts/BaseLayout.astro';
+---
+<BaseLayout
+  title="Coherence Engine — Measuring the structure of arguments"
+  description="A research program quantifying internal logical coherence and competitive coherence between argumentative structures. Pre-seed venture thesis powered by formal contradiction analysis."
+  rss
+>
+  <section class="prose">
+    <p class="text-sm uppercase tracking-wide text-muted not-prose">Thesis</p>
+    <h1 class="mt-2">Value is what you can defend.</h1>
+    <p class="text-lg text-muted">
+      We are building tooling and a fund around a single hypothesis: companies, theses, and ideologies
+      that survive are the ones whose argumentative structure is more <em>coherent</em> &mdash; both
+      with itself and with the operative premises of the domain it competes in.
+    </p>
+
+    <h2>The composite score</h2>
+    <p>
+      Given a body of text <code>Γ</code>, the engine extracts claims and premises, runs six layers of
+      analysis (formal consistency, argumentation semantics, probabilistic coherence, embedding
+      geometry, information theory, and an LLM judge), and combines them into a single score
+      <code>Coh(Γ) ∈ [0,1]</code>. The output is a number with provenance: every contribution is
+      traceable back to a claim, a premise, or a contradiction edge.
+    </p>
+
+    <h2>What we publish</h2>
+    <ul>
+      <li><a href="/research/cosine_paradox">The cosine paradox</a> &mdash; why pairwise embedding similarity systematically under-detects substantive contradiction.</li>
+      <li><a href="/research/contradiction_direction">Contradiction direction</a> &mdash; using Householder reflections to locate the axis along which two premises disagree.</li>
+      <li><a href="/research/reverse_marxism">Reverse Marxism</a> &mdash; ideological reflection as a recovery test for whether an analytic framework's structure is preserved under axis-flip.</li>
+      <li><a href="/research/decision_policy_v1">Decision policy v1</a> &mdash; the policy formalization that gates pre-seed investment decisions.</li>
+    </ul>
+
+    <h2>What we explicitly are not claiming</h2>
+    <p>
+      The Coherence Engine has not been validated as a predictor of startup success, ideological
+      adoption, or any other downstream outcome. Predictive validity is an open empirical question
+      and the subject of an in-progress study. Read the <a href="/results">results page</a> for the
+      current state of validation, including the negative findings.
+    </p>
+  </section>
+</BaseLayout>

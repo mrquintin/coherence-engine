@@ -38,8 +38,6 @@ def draw_icon(size):
     """Draw the Coherence Engine icon at the given size."""
     pixels = [0] * (size * size * 4)
     cx, cy = size / 2, size / 2
-    radius = size * 0.38
-
     bg_r, bg_g, bg_b = 30, 30, 46
     ring_r, ring_g, ring_b = 137, 180, 250
     center_r, center_g, center_b = 166, 227, 161

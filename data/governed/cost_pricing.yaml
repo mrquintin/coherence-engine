@@ -1,0 +1,72 @@
+# Coherence Engine — paid-call pricing registry (prompt 62).
+#
+# This file is the SINGLE source of truth for unit pricing of every
+# paid external call the platform makes (STT minutes, LLM tokens,
+# embeddings, Twilio voice minutes, Stripe fees). The cost_telemetry
+# service reads it to compute ``unit_cost_usd`` + ``total_usd`` for
+# every CostEvent. Changing a price is a YAML edit + governance
+# review, not a code change (prompt 62 prohibition: never hardcode
+# pricing in code).
+#
+# Each entry:
+#   sku            stable provider+model+resource id, dotted notation
+#   unit           human-readable unit string ("minute", "1000_tokens",
+#                  "request"); also persisted on the CostEvent row.
+#   unit_cost_usd  USD per single ``unit`` listed above. Must be >= 0.
+#
+# Operator obligation: prices on managed APIs change. Any change to
+# this file MUST be reviewed via the standard governance workflow
+# (changelog + reviewer signoff). The ``schema_version`` pin lets the
+# loader fail loud on a forward-incompatible registry.
+
+schema_version: cost-pricing-v1
+
+prices:
+  # ── Speech-to-text ────────────────────────────────────────────
+  - sku: deepgram.nova-2.audio_minute
+    unit: minute
+    unit_cost_usd: 0.0043
+  - sku: assemblyai.universal.audio_minute
+    unit: minute
+    unit_cost_usd: 0.0065
+  - sku: whisper_local.audio_minute
+    unit: minute
+    unit_cost_usd: 0.0
+
+  # ── Embeddings ────────────────────────────────────────────────
+  - sku: openai.text-embedding-3-large.tokens
+    unit: 1000_tokens
+    unit_cost_usd: 0.00013
+  - sku: openai.text-embedding-3-small.tokens
+    unit: 1000_tokens
+    unit_cost_usd: 0.00002
+
+  # ── LLMs ──────────────────────────────────────────────────────
+  - sku: anthropic.claude-3-5-sonnet.input_tokens
+    unit: 1000_tokens
+    unit_cost_usd: 0.003
+  - sku: anthropic.claude-3-5-sonnet.output_tokens
+    unit: 1000_tokens
+    unit_cost_usd: 0.015
+  - sku: openai.gpt-4o.input_tokens
+    unit: 1000_tokens
+    unit_cost_usd: 0.005
+  - sku: openai.gpt-4o.output_tokens
+    unit: 1000_tokens
+    unit_cost_usd: 0.015
+
+  # ── Twilio voice ──────────────────────────────────────────────
+  - sku: twilio.voice.outbound_us
+    unit: minute
+    unit_cost_usd: 0.013
+  - sku: twilio.voice.inbound_us
+    unit: minute
+    unit_cost_usd: 0.0085
+  - sku: twilio.voice.recording_storage
+    unit: minute
+    unit_cost_usd: 0.0025
+
+  # ── Stripe / capital movement fees ────────────────────────────
+  - sku: stripe.connect.payout_fee
+    unit: request
+    unit_cost_usd: 0.25

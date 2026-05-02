@@ -1,0 +1,28 @@
+{
+  "company_name": "anon_6915ed97c725b9a6",
+  "country": "US",
+  "deck_uri": "coh://local/historical-corpus/seeds/8efd6168-a055-71e4-8863-c237eb3feab2/deck.pdf",
+  "domain_primary": "fintech",
+  "eligibility": {
+    "consent_documented": true,
+    "date_window_ok": true,
+    "evidence_floor_ok": false,
+    "no_training_overlap_ok": true
+  },
+  "evidence_floor": {
+    "n_metrics_cited": 1,
+    "n_propositions": 4,
+    "n_sources_cited": 0
+  },
+  "memo_uri": "coh://local/historical-corpus/seeds/8efd6168-a055-71e4-8863-c237eb3feab2/memo.md",
+  "pitch_id": "8efd6168-a055-71e4-8863-c237eb3feab2",
+  "pitch_year": 2012,
+  "provenance": {
+    "consent_documented": true,
+    "ingested_at": "2026-04-25T00:00:00+00:00",
+    "ingestion_run_id": "ing_seed00000000seed",
+    "source": "synthetic"
+  },
+  "schema_version": "1",
+  "transcript_uri": "coh://local/historical-corpus/seeds/8efd6168-a055-71e4-8863-c237eb3feab2/transcript.txt"
+}

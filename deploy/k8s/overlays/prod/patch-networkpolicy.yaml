@@ -2,6 +2,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-api-ingress
+  namespace: coherence-fund
 spec:
   ingress:
     - from:
@@ -16,6 +17,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-app-egress
+  namespace: coherence-fund
 spec:
   egress:
     # DNS
@@ -59,4 +61,3 @@ spec:
       ports:
         - protocol: TCP
           port: 443
-

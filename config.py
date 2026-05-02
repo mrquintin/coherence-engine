@@ -1,7 +1,7 @@
 """Engine configuration with sensible defaults."""
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 def _env_float(key: str, default: float) -> float:

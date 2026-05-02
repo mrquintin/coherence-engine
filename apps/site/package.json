@@ -1,0 +1,36 @@
+{
+  "name": "@coherence/site",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Coherence Engine public marketing + research site (Astro static).",
+  "scripts": {
+    "dev": "astro dev --port 4321",
+    "start": "astro dev --port 4321",
+    "build": "astro build",
+    "preview": "astro preview --port 4321",
+    "astro": "astro",
+    "typecheck": "astro check",
+    "test": "vitest run",
+    "test:e2e": "playwright test --project=chromium",
+    "lighthouse": "node scripts/run_lighthouse.mjs"
+  },
+  "dependencies": {
+    "@astrojs/mdx": "3.1.9",
+    "@astrojs/rss": "4.0.7",
+    "@astrojs/sitemap": "3.1.6",
+    "@astrojs/tailwind": "5.1.1",
+    "astro": "4.16.19",
+    "katex": "0.16.11",
+    "rehype-katex": "7.0.1",
+    "remark-math": "6.0.0",
+    "tailwindcss": "3.4.13"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.4",
+    "@playwright/test": "1.47.2",
+    "@types/node": "20.14.10",
+    "typescript": "5.5.3",
+    "vitest": "1.6.0"
+  }
+}

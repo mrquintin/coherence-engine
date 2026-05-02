@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, inspect
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 from coherence_engine.server.fund import models
 from coherence_engine.server.fund.database import Base, SessionLocal, engine

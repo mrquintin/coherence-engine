@@ -1,0 +1,59 @@
+schema_version: chaos-scenario-v1
+name: db_primary_failover
+description: >-
+  Stops the Postgres primary container in the middle of a small workload
+  and verifies the system recovers without orphaning scoring jobs or
+  producing a non-replayable decision artifact. Application code is
+  expected to retry-with-backoff on connection failure; the harness
+  asserts the end-to-end pipeline still completes within the SLO.
+
+slo:
+  end_to_end_seconds: 60
+
+pre_state:
+  required_services:
+    - postgres_primary
+    - postgres_replica
+    - redis
+    - minio
+    - api
+    - scoring_worker
+  startup_timeout_seconds: 60
+
+perturbation:
+  - action: stop
+    target: postgres_primary
+    duration_seconds: 5
+    note: >-
+      Simulate a primary crash. Replica continues to serve reads; the
+      app's connection pool sees a dropped socket and retries.
+  - action: start
+    target: postgres_primary
+    note: >-
+      Bring the primary back. The connection pool re-handshakes on its
+      next attempt; in-flight jobs resume from their last committed
+      checkpoint.
+
+workload:
+  kind: synthetic_application_submit
+  count: 3
+  application_fixture: tests/integration/fixtures/e2e_minimal_application.json
+  wait_for_completion_timeout_seconds: 60
+
+post_conditions:
+  - kind: no_orphaned_scoring_jobs
+    detail: >-
+      Every scoring_jobs row must be in ('succeeded', 'failed_terminal')
+      when the workload completes — never 'in_progress' with a heartbeat
+      older than 30s.
+  - kind: idempotency_intact
+    detail: >-
+      Re-submitting the same application_id must return the existing
+      decision artifact (idempotency hash match), not produce a new one.
+  - kind: byte_identical_artifact_replay
+    detail: >-
+      Re-running the artifact compiler from the persisted inputs must
+      produce a byte-identical artifact (sha256 match). This is the
+      determinism contract — never relax this assertion.
+  - kind: end_to_end_within_slo
+    detail: P95 wall-clock time from intake → notify must remain ≤ slo.end_to_end_seconds.

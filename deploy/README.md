@@ -58,5 +58,4 @@ On-call / governance (optional, repository Actions secrets):
 - Repository variables (optional): `ONCALL_SCHEDULED_LIVE_PROVIDER_DRILL`, `ONCALL_DRILL_QUIET_UTC_START` / `ONCALL_DRILL_QUIET_UTC_END`, `ONCALL_VERIFICATION_ARTIFACT_RETENTION_DAYS`, `ONCALL_POST_TRACKER_HANDOFF`, `ONCALL_TRACKER_STAGING_HANDOFF_PROVIDER`, `ONCALL_TRACKER_PRODUCTION_HANDOFF_PROVIDER` (`generic` | `jira` | `github`; default generic) — see `docs/ops/runbooks/production_observability_rollout.md`
 - `UNCERTAINTY_SHADOW_PROMOTION_TOKEN` — required when using **Promote to shadow** on `uncertainty-recalibration.yml` (paired with workflow input `promotion_approval_token`)
 
-Per-environment runtime keys for secret managers and worker ops alerts are listed in `deploy/systemd/coherence-fund.env.example`, `deploy/k8s/configmap-env-template.yaml`, and Helm `values.yaml` / `values-prod.yaml`.
-
+Per-environment runtime keys for secret managers and worker ops alerts are listed in `deploy/systemd/coherence-fund.env.example`, `deploy/k8s/base/configmap-env-template.yaml`, and Helm `values.yaml` / `values-prod.yaml`.

@@ -1,0 +1,90 @@
+\documentclass[11pt,letterpaper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[margin=1in]{geometry}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{fancyhdr}
+\usepackage{parskip}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small [[ fund_name | latex ]] --- capital call notice}
+\rhead{\small call \texttt{[[ call_id | latex ]]}}
+\usepackage{lastpage}
+\cfoot{\small page \thepage{} of \pageref{LastPage}}
+
+\setlength{\headheight}{14pt}
+
+\title{[[ fund_name | latex ]]: Capital Call Notice \\ \large [[ call_id | latex ]]}
+\author{To: [[ lp_legal_name | latex ]]}
+\date{[[ generated_at | latex ]]}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+\section*{Disclaimer}
+[[ disclaimer | latex ]]
+
+\section{Notice Particulars}
+\begin{itemize}
+  \item Limited Partner: [[ lp_legal_name | latex ]] (LP id \texttt{[[ lp_id | latex ]]})
+  \item Capital call id: \texttt{[[ call_id | latex ]]}
+  \item Notice date: [[ notice_date | isoday | latex ]]
+  \item Funds due by: [[ due_date | isoday | latex ]]
+  \item Fund-side contact: [[ contact_email | latex ]]
+\end{itemize}
+
+\section{Amounts}
+\begin{longtable}{lr}
+\toprule
+Field & Amount \\
+\midrule
+\endhead
+Total call amount (fund-wide)        & [[ total_call_amount_usd | usd ]] \\
+This LP's share                      & [[ lp_call_amount_usd | usd ]] \\
+Cumulative called from this LP       & [[ cumulative_called_usd | usd ]] \\
+Remaining commitment after this call & [[ remaining_commitment_usd | usd ]] \\
+\bottomrule
+\end{longtable}
+
+\section{Use of Proceeds}
+[% if has_line_items %]
+\begin{longtable}{lllrr}
+\toprule
+Application & Company & Instrument & Investment & LP share \\
+\midrule
+\endhead
+[% for li in line_items %]
+\texttt{[[ li.application_id | latex ]]} & [[ li.company_name | latex ]] & [[ li.instrument_type | latex ]] & [[ li.investment_amount_usd | usd ]] & [[ li.lp_share_usd | usd ]] \\
+[% endfor %]
+\bottomrule
+\end{longtable}
+[% else %]
+\emph{(no individual line items disclosed for this call)}
+[% endif %]
+
+\section{Funding Instructions}
+Wire instructions reference: \texttt{[[ wire_instructions_ref | latex ]]}.
+The treasurer's wire register holds the routing details associated
+with this reference. The Fund does not embed bank account numbers in
+this notice for security reasons; please contact [[ contact_email | latex ]]
+if you do not have the matching wire instructions on file.
+
+\section{Acknowledgement}
+By signing below, [[ lp_legal_name | latex ]] acknowledges receipt
+of this capital call notice and confirms its obligation to fund the
+amount stated above by the due date.
+
+\vspace{2em}
+\noindent
+\begin{tabular}{p{3in}p{3in}}
+\hrulefill & \hrulefill \\
+LP signature ([[ lp_legal_name | latex ]]) & Date \\
+\end{tabular}
+
+\end{document}

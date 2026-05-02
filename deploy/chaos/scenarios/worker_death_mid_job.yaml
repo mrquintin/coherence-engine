@@ -1,0 +1,61 @@
+schema_version: chaos-scenario-v1
+name: worker_death_mid_job
+description: >-
+  Kills the scoring worker container while it is processing a scoring
+  job. The job must be picked up by another worker via the heartbeat /
+  visibility-timeout machinery (prompt 30 worker-reliability fields)
+  and must produce a byte-identical artifact on retry.
+
+  Important: the harness uses ``docker stop`` (SIGTERM, default 10s
+  grace) — NOT ``docker kill -s 9`` — because a SIGKILL on a worker
+  that holds an open Postgres transaction risks abandoning a row-lock
+  in the kernel's per-PID lock table beyond what the chaos invariants
+  cover. The prompt-30 prohibitions explicitly forbid SIGKILL on
+  processes that hold DB locks without first observing lock release;
+  the scenario respects that.
+
+slo:
+  end_to_end_seconds: 90
+
+pre_state:
+  required_services:
+    - postgres_primary
+    - redis
+    - minio
+    - api
+    - scoring_worker
+  startup_timeout_seconds: 60
+
+perturbation:
+  - action: stop
+    target: scoring_worker
+    signal: SIGTERM
+    timeout_seconds: 10
+    duration_seconds: 6
+    note: >-
+      Graceful stop. The worker has a ``finally`` block that flushes
+      the heartbeat to NULL on shutdown, but the chaos harness ALSO
+      asserts the recovery path works when the heartbeat is left stale
+      (visibility-timeout reaper).
+  - action: start
+    target: scoring_worker
+
+workload:
+  kind: synthetic_application_submit
+  count: 4
+  application_fixture: tests/integration/fixtures/e2e_minimal_application.json
+  wait_for_completion_timeout_seconds: 90
+
+post_conditions:
+  - kind: no_orphaned_scoring_jobs
+    detail: >-
+      The reaper must promote any 'in_progress' row whose heartbeat is
+      older than the visibility-timeout window to 'queued', exactly
+      once per row.
+  - kind: idempotency_intact
+  - kind: byte_identical_artifact_replay
+    detail: >-
+      The new worker must produce a sha256-identical artifact to what
+      the original worker would have produced. This proves the inputs
+      were durable across the restart, not just the outputs.
+  - kind: end_to_end_within_slo

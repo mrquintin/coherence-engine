@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -84,7 +82,7 @@ def test_outbox_get_ops_metrics_pending_and_failed(fund_session: Session):
     assert m["failed_dlq"] == 1
 
 
-def test_emit_outbox_ops_snapshot_warn_tags(caplog, fund_session: Session, monkeypatch):
+def test_emit_outbox_ops_snapshot_warn_tags(fund_session: Session, monkeypatch):
     from coherence_engine.server.fund.repositories.outbox_repository import OutboxRepository
     from coherence_engine.server.fund.services.outbox_dispatcher import emit_outbox_ops_snapshot
 
@@ -106,18 +104,16 @@ def test_emit_outbox_ops_snapshot_warn_tags(caplog, fund_session: Session, monke
     fund_session.commit()
 
     monkeypatch.setenv("COHERENCE_FUND_OUTBOX_OPS_QUEUE_WARN_DEPTH", "1")
-    caplog.set_level(logging.WARNING)
     repo = OutboxRepository(fund_session)
-    emit_outbox_ops_snapshot(repo, tick_result={"published": 0, "failed": 0, "scanned": 0})
-    assert any("COHERENCE_FUND_WORKER_OPS_SNAPSHOT" in r.message for r in caplog.records)
-    payload_line = [r.message for r in caplog.records if "COHERENCE_FUND_WORKER_OPS_SNAPSHOT" in r.message][-1]
-    json_part = payload_line.split("COHERENCE_FUND_WORKER_OPS_SNAPSHOT ", 1)[1]
-    data = json.loads(json_part)
+    data = emit_outbox_ops_snapshot(
+        repo, tick_result={"published": 0, "failed": 0, "scanned": 0}
+    )
+    assert data["marker"] == "COHERENCE_FUND_WORKER_OPS_SNAPSHOT"
     assert data["component"] == "outbox"
     assert "queue_depth" in data["warn"]
 
 
-def test_scoring_ops_metrics_and_snapshot(caplog, fund_session: Session, monkeypatch):
+def test_scoring_ops_metrics_and_snapshot(fund_session: Session, monkeypatch):
     from coherence_engine.server.fund.scoring_worker import collect_scoring_ops_metrics, emit_scoring_ops_snapshot
 
     founder = models.Founder(
@@ -154,11 +150,10 @@ def test_scoring_ops_metrics_and_snapshot(caplog, fund_session: Session, monkeyp
     assert m["failed_dlq"] == 0
 
     monkeypatch.setenv("COHERENCE_FUND_SCORING_OPS_QUEUE_WARN_DEPTH", "1")
-    caplog.set_level(logging.WARNING)
-    emit_scoring_ops_snapshot(fund_session, tick_result={"processed": 0, "failed": 0, "idle": 1})
-    payload_line = [r.message for r in caplog.records if "COHERENCE_FUND_WORKER_OPS_SNAPSHOT" in r.message][-1]
-    json_part = payload_line.split("COHERENCE_FUND_WORKER_OPS_SNAPSHOT ", 1)[1]
-    data = json.loads(json_part)
+    data = emit_scoring_ops_snapshot(
+        fund_session, tick_result={"processed": 0, "failed": 0, "idle": 1}
+    )
+    assert data["marker"] == "COHERENCE_FUND_WORKER_OPS_SNAPSHOT"
     assert data["component"] == "scoring"
     assert "queue_depth" in data["warn"]
 

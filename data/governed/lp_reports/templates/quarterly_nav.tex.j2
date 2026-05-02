@@ -1,0 +1,99 @@
+\documentclass[11pt,letterpaper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[margin=1in]{geometry}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{fancyhdr}
+\usepackage{parskip}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small [[ fund_name | latex ]] --- LP statement}
+\rhead{\small [[ quarter_label | latex ]]}
+\usepackage{lastpage}
+\cfoot{\small page \thepage{} of \pageref{LastPage}}
+
+\setlength{\headheight}{14pt}
+
+\title{[[ fund_name | latex ]]: Quarterly NAV Statement \\ \large [[ quarter_label | latex ]]}
+\author{[[ lp_legal_name | latex ]]}
+\date{[[ generated_at | latex ]]}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+\section*{Disclaimer}
+[[ disclaimer | latex ]]
+
+\section{Reporting Period}
+\begin{itemize}
+  \item Limited Partner: [[ lp_legal_name | latex ]] (LP id \texttt{[[ lp_id | latex ]]})
+  \item Quarter: \texttt{[[ quarter_label | latex ]]}
+  \item Period covered: [[ quarter_start | isoday | latex ]] to [[ quarter_end | isoday | latex ]]
+  \item As-of date: [[ as_of_date | isoday | latex ]]
+  \item Generated at: [[ generated_at | latex ]]
+\end{itemize}
+
+\section{Capital Account Summary}
+\begin{longtable}{lr}
+\toprule
+Field & Amount \\
+\midrule
+\endhead
+Commitment                       & [[ commitment_usd | usd ]] \\
+Called to date                   & [[ called_to_date_usd | usd ]] \\
+Uncalled commitment              & [[ uncalled_capital_usd | usd ]] \\
+Distributions to date            & [[ distributions_to_date_usd | usd ]] \\
+Ownership fraction               & [[ ownership_fraction | pct ]] \\
+Cost basis (LP share)            & [[ total_cost_basis_usd | usd ]] \\
+Fair market value (LP share)     & [[ total_fmv_usd | usd ]] \\
+Unrealized gain (LP share)       & [[ unrealized_gain_usd | usd ]] \\
+Net asset value (FMV + uncalled) & [[ nav_usd | usd ]] \\
+IRR (since inception)            & [[ irr | irr ]] \\
+\bottomrule
+\end{longtable}
+
+\section{Portfolio Positions (LP Share)}
+[% if has_positions %]
+\begin{longtable}{lllrrl}
+\toprule
+Application & Company & Instrument & Cost (LP) & FMV (LP) & Mark methodology \\
+\midrule
+\endhead
+[% for p in positions %]
+\texttt{[[ p.application_id | latex ]]} & [[ p.company_name | latex ]] & [[ p.instrument_type | latex ]] & [[ p.lp_cost_basis_usd | usd ]] & [[ p.lp_fmv_usd | usd ]] & [[ p.mark_methodology | latex ]] \\
+[% endfor %]
+\bottomrule
+\end{longtable}
+[% else %]
+\emph{(no portfolio positions held by this LP this quarter)}
+[% endif %]
+
+\section{Cash Flows This Period}
+[% if has_cash_flows %]
+\begin{longtable}{lll}
+\toprule
+Date & Kind & Amount \\
+\midrule
+\endhead
+[% for c in cash_flows %]
+[[ c.flow_date | isoday | latex ]] & [[ c.kind | latex ]] & [[ c.amount_usd | usd ]] \\
+[% endfor %]
+\bottomrule
+\end{longtable}
+[% else %]
+\emph{(no LP-level cash flows recorded for this quarter)}
+[% endif %]
+
+\section*{Provenance}
+This statement was assembled by
+\texttt{lp\_reporting.assemble\_quarterly\_statement}. Each portfolio
+position above carries an operator-attested Mark; an unsigned Mark
+would have prevented this statement from being published.
+
+\end{document}

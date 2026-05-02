@@ -1,0 +1,29 @@
+[Unit]
+Description=Coherence Fund Arq Background Worker
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=coherence
+Group=coherence
+WorkingDirectory=/opt/coherence_engine
+EnvironmentFile=/etc/default/coherence-fund
+Environment=WORKER_BACKEND=arq
+ExecStart=/opt/coherence_engine/venv/bin/python -m coherence_engine.server.fund.workers.arq_worker
+Restart=always
+RestartSec=5
+# Slightly above the in-process ``job_timeout`` (900s) so the kernel does
+# not SIGKILL during a graceful drain.
+TimeoutStopSec=950
+KillMode=mixed
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/coherence_engine
+
+[Install]
+WantedBy=multi-user.target

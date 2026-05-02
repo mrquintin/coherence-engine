@@ -1,0 +1,101 @@
+# Pre-commit hooks for the coherence_engine repo.
+# Install with: pre-commit install
+# Run all: pre-commit run --all-files
+#
+# Hooks: trailing/EOF whitespace, JSON/YAML/TOML validators, large-file
+# detection, ruff (lint + format), mypy (strict, backend), eslint per
+# Next.js app, dotenv-linter, no-commit-to-branch (forbid main).
+
+default_language_version:
+  python: python3
+
+default_stages: [pre-commit]
+
+# Generated SDK clients and lockfiles must not be auto-formatted.
+exclude: |
+  (?x)^(
+    sdk/.*|
+    apps/[^/]+/src/sdk/.*|
+    .*\.lock|
+    .*-lock\.json|
+    pnpm-lock\.yaml|
+    yarn\.lock|
+    package-lock\.json|
+    \.git\.broken_.*
+  )$
+
+repos:
+  # ---------------------------------------------------------------- core
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        args: ["--markdown-linebreak-ext=md"]
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: ["--allow-multiple-documents"]
+      - id: check-json
+      - id: check-toml
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-merge-conflict
+      - id: no-commit-to-branch
+        args: ["--branch", "main"]
+
+  # ---------------------------------------------------------------- ruff
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: ["--fix", "--exit-non-zero-on-fix"]
+      - id: ruff-format
+
+  # ---------------------------------------------------------------- mypy
+  # Local hook so we use the project's pinned mypy and config.
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (strict, backend)
+        entry: python -m mypy
+        language: system
+        types: [python]
+        pass_filenames: false
+        args:
+          - --config-file=pyproject.toml
+          - server
+          - core
+        require_serial: true
+
+  # ----------------------------------------------------------- dotenv
+  - repo: https://github.com/dotenv-linter/dotenv-linter
+    rev: v3.3.0
+    hooks:
+      - id: dotenv-linter
+        files: ^\.env\.example$
+
+  # ----------------------------------------------------- eslint per app
+  # Each Next.js / Astro app owns its eslint config; we run eslint only
+  # against staged files inside that app to keep the hook fast.
+  - repo: local
+    hooks:
+      - id: eslint-founder-portal
+        name: eslint (apps/founder_portal)
+        entry: bash -c 'cd apps/founder_portal && npx --no-install eslint --max-warnings=0 "$@"' --
+        language: system
+        files: ^apps/founder_portal/.*\.(ts|tsx|js|jsx|mjs|cjs)$
+        exclude: ^apps/founder_portal/(node_modules|\.next|src/sdk)/
+        require_serial: false
+      - id: eslint-partner-dashboard
+        name: eslint (apps/partner_dashboard)
+        entry: bash -c 'cd apps/partner_dashboard && npx --no-install eslint --max-warnings=0 "$@"' --
+        language: system
+        files: ^apps/partner_dashboard/.*\.(ts|tsx|js|jsx|mjs|cjs)$
+        exclude: ^apps/partner_dashboard/(node_modules|\.next|src/sdk)/
+        require_serial: false
+      - id: eslint-site
+        name: eslint (apps/site)
+        entry: bash -c 'cd apps/site && npx --no-install eslint --max-warnings=0 "$@"' --
+        language: system
+        files: ^apps/site/.*\.(ts|tsx|js|jsx|mjs|cjs|astro)$
+        exclude: ^apps/site/(node_modules|dist|\.astro)/
+        require_serial: false

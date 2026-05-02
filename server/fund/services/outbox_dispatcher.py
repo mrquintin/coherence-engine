@@ -47,7 +47,9 @@ def _outbox_warn_tags(metrics: dict) -> List[str]:
     return tags
 
 
-def emit_outbox_ops_snapshot(repo: OutboxRepository, tick_result: Dict[str, int] | None = None) -> None:
+def emit_outbox_ops_snapshot(
+    repo: OutboxRepository, tick_result: Dict[str, int] | None = None
+) -> dict:
     """Emit a single-line JSON snapshot for log scrapers (no external services)."""
     metrics = repo.get_ops_metrics()
     warn_tags = _outbox_warn_tags(metrics)
@@ -61,6 +63,7 @@ def emit_outbox_ops_snapshot(repo: OutboxRepository, tick_result: Dict[str, int]
         "warn": warn_tags,
     }
     emit_worker_ops_snapshot(_LOG, warn_tags=warn_tags, payload=payload)
+    return payload
 
 
 class OutboxDispatcher:
@@ -135,4 +138,3 @@ def run_loop(dispatcher: OutboxDispatcher, poll_seconds: float = 2.0, batch_size
 
 def topic_prefix_from_env() -> str:
     return os.getenv("COHERENCE_FUND_TOPIC_PREFIX", "coherence.fund")
-

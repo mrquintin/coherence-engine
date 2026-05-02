@@ -1,0 +1,30 @@
+# Umbrella values. The actual API + worker deployment values live under the
+# `coherence-fund` subchart key; only release-pipeline level toggles live here.
+
+# Pipeline-stage Prometheus alert rules (pre-prompt-67 stub).
+# Disabled by default so the template only renders when explicitly enabled.
+prometheusRules:
+  enabled: false
+  namespace: ""
+
+# External-secrets operator integration (consumed by subchart secret manifest).
+externalSecrets:
+  enabled: false
+  refreshInterval: 1h
+  secretStoreRef:
+    name: ""
+    kind: ClusterSecretStore
+
+# Subchart values are merged under their chart name. Override anything from
+# coherence-fund/values.yaml here for environment-specific deploys.
+coherence-fund:
+  image:
+    repository: ghcr.io/coherence-engine/backend
+    tag: ""    # defaults to .Chart.AppVersion in the subchart
+    pullPolicy: IfNotPresent
+  api:
+    replicas: 2
+  worker:
+    replicas: 1
+  scoringWorker:
+    replicas: 1

@@ -77,10 +77,10 @@ def portfolio_snapshot_from_repository(repo) -> Optional[PortfolioSnapshot]:
     """
     if repo is None:
         return None
-    state = getattr(repo, "latest_state")()
+    state = repo.latest_state()
     if state is None:
         return None
-    totals = getattr(repo, "active_positions_by_domain")()
+    totals = repo.active_positions_by_domain()
     return PortfolioSnapshot(
         fund_nav_usd=float(getattr(state, "fund_nav_usd", 0.0) or 0.0),
         liquidity_reserve_usd=float(getattr(state, "liquidity_reserve_usd", 0.0) or 0.0),
@@ -431,6 +431,96 @@ class DecisionPolicyService:
         elif compliance_status == "review_required":
             failed_gates.append({"gate": "compliance_gate", "reason_code": "COMPLIANCE_REVIEW_REQUIRED"})
 
+        # ``kyc_clear`` gate (prompt 53). Founder KYC/AML is mandatory
+        # upstream of any capital instruction. ``application["kyc_passed"]``
+        # is the caller-supplied boolean form of
+        # ``founder_kyc.is_kyc_clear`` -- threading the resolved boolean
+        # rather than the ORM row keeps the policy module free of a hard
+        # dependency on ``founder_kyc`` and preserves backward
+        # compatibility for callers that don't yet thread KYC state
+        # (the gate is silent when the field is absent / ``None``).
+        # When explicitly ``False``, the verdict cannot rise above
+        # ``manual_review``.
+        kyc_passed_raw = application.get("kyc_passed", None)
+        if kyc_passed_raw is not None and kyc_passed_raw is not True:
+            failed_gates.append(
+                {"gate": "kyc_clear", "reason_code": "KYC_REQUIRED"}
+            )
+
+        # ``regulatory_pathway_clear`` gate (prompt 56). The
+        # classifier in
+        # :mod:`coherence_engine.server.fund.services.regulatory_pathway`
+        # resolves the application against the operator-configured
+        # ``data/governed/regulatory_pathways.yaml`` registry and
+        # threads the result here as ``regulatory_pathway_status``
+        # (one of ``clear`` | ``unclear`` | ``ambiguous``). The
+        # policy module deliberately does NOT load the YAML itself
+        # so the import graph stays acyclic and so this module
+        # remains free of legal / counsel dependencies. ``unclear``
+        # surfaces ``REGULATORY_PATHWAY_UNCLEAR`` (a prerequisite
+        # such as accredited verification or fresh counsel signoff
+        # is missing); ``ambiguous`` surfaces
+        # ``REGULATORY_PATHWAY_AMBIGUOUS`` (zero or multiple
+        # pathways match -- the operator MUST disambiguate).
+        # Either reason code downgrades ``pass`` to
+        # ``manual_review``; never to ``fail`` (operator decides
+        # whether to disambiguate, refresh signoff, or close the
+        # application).
+        # ``coi_clear`` gate (prompt 59). Conflict-of-interest checks
+        # against the partner registry are evaluated upstream by
+        # :mod:`coherence_engine.server.fund.services.conflict_of_interest`
+        # and threaded onto the application as ``coi_clear``
+        # (boolean) plus an optional ``coi_status`` string
+        # (``clear`` | ``conflicted`` | ``requires_disclosure``).
+        # The policy module deliberately does NOT load the registry
+        # itself so the import graph stays acyclic. ``conflicted``
+        # surfaces ``COI_CONFLICT`` and downgrades ``pass`` to
+        # ``manual_review``; ``requires_disclosure`` surfaces
+        # ``COI_DISCLOSURE_REQUIRED`` likewise. A missing /
+        # ``None`` value is silent (backward-compatible). When
+        # ``coi_clear`` is explicitly ``False``, the verdict
+        # cannot rise above ``manual_review``.
+        coi_clear_raw = application.get("coi_clear", None)
+        coi_status_raw = application.get("coi_status", None)
+        if coi_clear_raw is not None and coi_clear_raw is not True:
+            coi_normalized = str(coi_status_raw or "").strip().lower()
+            if coi_normalized == "requires_disclosure":
+                failed_gates.append(
+                    {
+                        "gate": "coi_clear",
+                        "reason_code": "COI_DISCLOSURE_REQUIRED",
+                    }
+                )
+            else:
+                failed_gates.append(
+                    {"gate": "coi_clear", "reason_code": "COI_CONFLICT"}
+                )
+
+        pathway_status = application.get("regulatory_pathway_status", None)
+        if pathway_status is not None:
+            normalized = str(pathway_status or "").strip().lower()
+            if normalized == "unclear":
+                failed_gates.append(
+                    {
+                        "gate": "regulatory_pathway_clear",
+                        "reason_code": "REGULATORY_PATHWAY_UNCLEAR",
+                    }
+                )
+            elif normalized == "ambiguous":
+                failed_gates.append(
+                    {
+                        "gate": "regulatory_pathway_clear",
+                        "reason_code": "REGULATORY_PATHWAY_AMBIGUOUS",
+                    }
+                )
+            elif normalized != "clear":
+                failed_gates.append(
+                    {
+                        "gate": "regulatory_pathway_clear",
+                        "reason_code": "REGULATORY_PATHWAY_UNCLEAR",
+                    }
+                )
+
         if anti_gaming > anti_gaming_max:
             failed_gates.append({"gate": "anti_gaming_gate", "reason_code": "ANTI_GAMING_HIGH"})
         elif anti_gaming >= anti_gaming_warn_min:
@@ -497,6 +587,25 @@ class DecisionPolicyService:
             "PORTFOLIO_LIQUIDITY_RESERVE_PRESSURE",
             "PORTFOLIO_DOMAIN_USD_CONCENTRATION_HIGH",
             "PORTFOLIO_DRAWDOWN_PROXY_ELEVATED",
+            # prompt 53: missing/expired/failed founder KYC blocks ``pass``
+            # but routes to manual review (operator decides to retry,
+            # escalate, or close), never to an automatic permanent reject.
+            "KYC_REQUIRED",
+            # prompt 56: regulatory pathway unresolved. Either a single
+            # pathway matched but a prerequisite is missing
+            # (``REGULATORY_PATHWAY_UNCLEAR``) or zero / multiple matched
+            # (``REGULATORY_PATHWAY_AMBIGUOUS``). Both downgrade
+            # ``pass`` to ``manual_review`` so the operator (with
+            # counsel) makes the call -- the engine does NOT pick a
+            # pathway autonomously.
+            "REGULATORY_PATHWAY_UNCLEAR",
+            "REGULATORY_PATHWAY_AMBIGUOUS",
+            # prompt 59: a flagged conflict-of-interest blocks ``pass``
+            # but never auto-fails -- the operator decides whether to
+            # re-route the application to a different partner or to
+            # attach an explicit disclosure / override.
+            "COI_CONFLICT",
+            "COI_DISCLOSURE_REQUIRED",
         }
         codes = {g["reason_code"] for g in failed_gates}
         if codes & hard_fail:

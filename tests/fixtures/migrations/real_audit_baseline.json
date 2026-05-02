@@ -1,0 +1,14 @@
+{
+  "_comment": "Pinned audit-summary counts for the real alembic/versions/ tree. Future edits that change these counts must update this file in the same PR. The real tree is currently Postgres/SQLite compatible; warnings document review-only patterns.",
+  "schema_version": "migration-registry-v1",
+  "total_revisions": 29,
+  "total_errors": 0,
+  "total_warnings": 10,
+  "revisions_with_errors": [],
+  "errors_by_code": {},
+  "warnings_by_code": {
+    "boolean_no_server_default": 4,
+    "sqlite_only_pattern_batch_alter_table": 4,
+    "fk_addition_no_not_valid": 2
+  }
+}

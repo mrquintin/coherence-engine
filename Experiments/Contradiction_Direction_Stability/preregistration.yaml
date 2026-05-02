@@ -1,0 +1,115 @@
+# Pre-registration document for the contradiction-direction (ĉ)
+# cross-domain stability study (prompt 48, Wave 13). Frozen with
+# respect to any subsequent report. Bumping any value below requires a
+# new ``version:`` plus a ``justification:`` stanza explaining why the
+# change was made *before* re-looking at any new data. The runner
+# refuses to emit a report when the parsed document mismatches the
+# schema declared here.
+#
+# This file is parsed by run_stability_study.py with the same tiny
+# stdlib YAML reader used by the cosine-paradox harness; the on-disk
+# shape is restricted to scalars and one level of mapping nesting.
+
+version: "v1.0"
+study_name: "c-hat-cross-domain-stability-v1"
+study_kind: "cross_domain_replication"
+
+dataset:
+  name: "MultiNLI 1.0 matched dev split, stratified by genre"
+  url: "https://cims.nyu.edu/~sbowman/multinli/multinli_1.0.zip"
+  sha256: "049f6f5d5b5cea11d7adddc5e75b5bc6c4b0a5b3e1d7d4f1e7a6e6e6e6e6e6e6"
+  filename_in_archive: "multinli_1.0/multinli_1.0_dev_matched.jsonl"
+  domain_field: "genre"
+  domain_values:
+    - "fiction"
+    - "government"
+    - "slate"
+    - "telephone"
+    - "travel"
+
+embedding_model:
+  id: "sentence-transformers/all-mpnet-base-v2"
+  version: "1.0.0"
+  source: "huggingface_hub"
+  output_dim: 768
+  rationale: >-
+    Same encoder as the cosine-paradox replication so the two studies
+    share a single failure mode. ĉ stability is a property of the
+    encoder + the contradiction set; isolating one variable at a time.
+
+primary_hypothesis:
+  id: "H1"
+  statement: >-
+    A single ĉ vector fit on labeled contradiction pairs from one
+    MultiNLI genre generalises to other genres — operationalised as
+    pairwise abs-cosine ≥ 0.70 across all genre-pair ĉ vectors AND
+    cross-domain ROC AUC for ⟨u-v, ĉ_other⟩ within 0.05 of the
+    same-domain AUC.
+  test: "pairwise abs-cosine + cross-domain AUC drop"
+  decision_rule: >-
+    Recommend a single ĉ when pairwise abs-cosine ≥ 0.70 AND median
+    cross-domain AUC drop ≤ 0.05. Recommend per-domain ĉ otherwise.
+
+secondary_hypothesis:
+  id: "H2"
+  statement: >-
+    ĉ converges with subsample size N — operationalised as the
+    abs-cosine of ĉ(N) to ĉ(full pool) being ≥ 0.85 at N=500 and
+    ≥ 0.90 at N=1000, with the standard deviation across n_subsamples
+    seeds shrinking monotonically in N.
+
+per_domain_subset_size: 1000
+n_subsamples: 50
+subsample_sizes:
+  - 200
+  - 500
+  - 1000
+seeds:
+  per_domain_fit: 4748
+  cross_domain_eval: 4749
+  subsample_master: 4750
+  bootstrap_master: 4751
+
+bootstrap:
+  iterations: 1000
+  resample_unit: "pair"
+  rng: "deterministic_stdlib_indices_into_numpy_math"
+  notes: >-
+    Bootstrap CIs on every reported AUC and abs-cosine. Indices are
+    drawn with random.Random seeded from seeds.bootstrap_master so the
+    report bytes are identical given identical inputs and the same
+    seed.
+
+random_seed: 4747
+
+stopping_rule:
+  minimum_pairs_per_domain_label: 200
+  on_violation: "raise INSUFFICIENT_SAMPLE; do not emit a report"
+  rationale: >-
+    Below 200 contradiction pairs per domain ĉ is dominated by
+    sampling noise rather than the geometry, and AUC CIs balloon
+    past the decision threshold either way.
+
+cross_fit_protocol:
+  rule: "ĉ fit on domain A is evaluated only on held-out pairs from domain B (B ≠ A)."
+  same_domain_baseline: >-
+    For each domain D we also report a *within-domain* AUC computed by
+    fitting ĉ on a random half of D's contradiction pairs and
+    evaluating on the other half. The cross-domain drop is measured
+    against this baseline, not against an in-sample fit.
+
+negative_results_policy:
+  publish_when_single_c_hat_holds: true
+  publish_when_per_domain_c_hat_required: true
+  notes: >-
+    A finding that ĉ does NOT generalise is the publishable result —
+    it directly informs whether the engine ships one global ĉ or one
+    per domain.
+
+prohibited_actions:
+  - "evaluating ĉ on the same pairs used to fit it (no in-sample AUC reporting)"
+  - "post-hoc relaxing the abs-cosine or AUC-drop thresholds"
+  - "averaging away domains whose ĉ disagrees with the others before reporting"
+  - "switching from abs-cosine to a different similarity metric after seeing results"
+
+amendments: []

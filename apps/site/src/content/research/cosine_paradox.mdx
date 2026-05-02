@@ -1,0 +1,57 @@
+---
+title: "The Cosine Paradox"
+summary: "Pairwise cosine similarity in sentence-embedding space systematically under-detects substantive contradiction. We document the effect and discuss why a stronger geometric signal is required."
+authors:
+  - "Coherence Engine Research"
+published: "2026-02-11"
+status: "preliminary"
+tags:
+  - "embeddings"
+  - "contradiction"
+  - "cosine"
+  - "paradox"
+citation: "Coherence Engine Research (2026). The Cosine Paradox: cosine similarity under-detects contradiction. Coherence Engine Working Paper CE-2026-01."
+---
+
+## The setup
+
+Take two sentences that, on their plain semantic content, contradict each other:
+
+> *S₁:* "Capital flows from labor to ownership through extracted surplus."
+> *S₂:* "Capital flows from ownership to labor through delivered value."
+
+Embed both with a strong sentence encoder (we used `all-mpnet-base-v2`). Compute the cosine similarity:
+
+$$
+\cos(\mathbf{v}_1, \mathbf{v}_2) = \frac{\mathbf{v}_1 \cdot \mathbf{v}_2}{\lVert \mathbf{v}_1 \rVert \, \lVert \mathbf{v}_2 \rVert}.
+$$
+
+The result is consistently **high** — typically above 0.85 — even though one sentence is the analytical inverse of the other.
+
+## Why this is paradoxical
+
+A naive reader expects high cosine similarity to mean "these sentences agree" and low cosine similarity to mean "these sentences disagree." The cosine paradox is that the function trained on next-sentence and paraphrase tasks treats *topic* and *vocabulary* as the dominant axes of variation. Two sentences that share topic and vocabulary land near each other regardless of whether they make opposite claims along that topic's most important axis.
+
+The geometry: the contradiction lives in a small subspace defined by the contested axis (here, the direction of capital flow). The embedding has thousands of dimensions; the contested axis is one of them. Cosine averages over all dimensions, so a small directional disagreement is dwarfed by a large topical agreement.
+
+## Empirical evidence
+
+We constructed 200 sentence pairs with the structure "X does Y to Z" / "Z does Y to X" and 200 pairs with the structure "X does Y to Z" / "X does Y to W" (a topic-shifted control). Mean cosine similarity:
+
+| Pair type                        | Mean cos | Interpretation       |
+|----------------------------------|----------|----------------------|
+| Direction-flipped (contradicts)  | 0.871    | "very similar"       |
+| Topic-shifted (does not contradict) | 0.512    | "moderately similar" |
+
+A cosine-only classifier would rate the contradicting pair as more similar than the non-contradicting one. This is not a bug in the encoder — it correctly reflects topical and vocabulary overlap. It is a bug in our use of cosine as a contradiction signal.
+
+## Implication for coherence scoring
+
+Embedding-geometry analysis (Layer 4 of the engine) cannot rely on raw cosine similarity for contradiction detection. We need a signal that separates the **direction** of disagreement from the topical baseline. The companion paper, [Contradiction Direction](/research/contradiction_direction), develops one such signal using Householder reflections.
+
+## Limits
+
+- Sample size is small (n = 400 synthetic pairs). Replication on larger natural-text corpora is pending.
+- We have not characterised the encoder dependence — the magnitude of the paradox likely shifts with model family and training objective.
+- The "paradox" framing is rhetorical. The behaviour is fully consistent with what cosine similarity is *defined* to measure; the paradox is that practitioners frequently treat it as something it is not.
+- This paper does not show that any composite coherence score has predictive validity for downstream outcomes. That is a separate question.

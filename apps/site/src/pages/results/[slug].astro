@@ -1,0 +1,60 @@
+---
+import BaseLayout from '~/layouts/BaseLayout.astro';
+import CaveatBanner from '~/components/CaveatBanner.astro';
+
+type StudyFrontmatter = {
+  title: string;
+  published_at: string;
+  version: string;
+  n_pitches: number;
+  domain_count: number;
+  headline: string;
+  rejected_null?: boolean;
+  data_hash?: string;
+  leakage_audit_digest?: string;
+  schema_version?: string;
+};
+
+type StudyModule = {
+  frontmatter: StudyFrontmatter;
+  Content: any;
+};
+
+export async function getStaticPaths() {
+  const modules = import.meta.glob('../../content/results/*.mdx', { eager: true });
+  return Object.entries(modules).map(([path, mod]) => {
+    const m = path.match(/([^/]+)\.mdx$/);
+    const slug = m ? m[1] : path;
+    return {
+      params: { slug },
+      props: { entry: mod as StudyModule },
+    };
+  });
+}
+
+const { entry } = Astro.props as { entry: StudyModule };
+const fm = entry.frontmatter;
+const Content = entry.Content;
+---
+<BaseLayout
+  title={`${fm.title} — Coherence Engine`}
+  description={fm.headline}
+  ogType="article"
+  publishedTime={fm.published_at}
+>
+  <article class="prose">
+    <header class="mb-8 not-prose">
+      <p class="text-sm uppercase tracking-wide text-muted">
+        Results · {fm.rejected_null ? 'rejected H0' : 'did not reject H0'} · published {fm.published_at}
+      </p>
+      <h1 class="text-3xl md:text-4xl font-semibold tracking-tight mt-2">{fm.title}</h1>
+      <p class="mt-3 text-muted">{fm.headline}</p>
+      <p class="mt-2 text-xs text-muted">
+        N={fm.n_pitches} · {fm.domain_count} domains · data_hash: <code>{fm.data_hash}</code>
+        {fm.leakage_audit_digest ? <> · leakage_audit: <code>{fm.leakage_audit_digest}</code></> : null}
+      </p>
+    </header>
+    <CaveatBanner />
+    <Content />
+  </article>
+</BaseLayout>

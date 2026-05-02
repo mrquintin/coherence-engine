@@ -1,0 +1,48 @@
+schema_version: chaos-scenario-v1
+name: redis_flap
+description: >-
+  Pauses the Redis container repeatedly (flap), simulating a noisy
+  network partition between the API / worker and Redis. ARQ enqueues
+  must retry; idempotency must hold; no scoring job should be
+  duplicated even if the same enqueue call is retried.
+
+slo:
+  end_to_end_seconds: 90
+
+pre_state:
+  required_services:
+    - postgres_primary
+    - redis
+    - minio
+    - api
+    - scoring_worker
+  startup_timeout_seconds: 60
+
+perturbation:
+  - action: pause
+    target: redis
+    duration_seconds: 4
+  - action: unpause
+    target: redis
+    duration_seconds: 4
+  - action: pause
+    target: redis
+    duration_seconds: 4
+  - action: unpause
+    target: redis
+
+workload:
+  kind: synthetic_application_submit
+  count: 5
+  application_fixture: tests/integration/fixtures/e2e_minimal_application.json
+  wait_for_completion_timeout_seconds: 90
+
+post_conditions:
+  - kind: no_orphaned_scoring_jobs
+  - kind: idempotency_intact
+    detail: >-
+      The job-key idempotency table must show one row per submission
+      even if the enqueue side retried. Duplicate jobs are a paging
+      regression.
+  - kind: byte_identical_artifact_replay
+  - kind: end_to_end_within_slo

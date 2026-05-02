@@ -1,0 +1,96 @@
+# Coherence Engine — regulatory pathway registry (prompt 56).
+#
+# DISCLAIMER. This file does NOT constitute legal advice and the
+# Coherence Engine software does NOT autonomously pick a securities
+# pathway. The operator's licensed securities counsel is solely
+# responsible for the contents of this registry: the enumerated
+# pathways, the eligibility rules, the advertising rules, the
+# investor-verification requirements, and the integration windows.
+# The runtime ENFORCES what counsel has configured here -- nothing
+# more, nothing less.
+#
+# The classifier in ``server/fund/services/regulatory_pathway.py``
+# matches each application against this registry along three axes
+# (founder jurisdiction, advertising mode, investor verification
+# requirement) and routes to:
+#
+#   - ``clear``     when exactly one pathway is eligible and all
+#                   gating prerequisites (incl. counsel signoff
+#                   freshness) are satisfied;
+#   - ``unclear``   when a candidate pathway exists but a gating
+#                   prerequisite is missing (e.g. counsel signoff
+#                   stale, accredited verification absent for
+#                   506(c));
+#   - ``ambiguous`` when zero or multiple pathways match.
+#
+# Pathway fields:
+#   id                          stable identifier persisted in
+#                               ``Application.regulatory_pathway_id``.
+#   jurisdiction                ISO-3166 alpha-2 of the founder /
+#                               issuer; ``US`` or ``non_US`` (the
+#                               classifier uses simple US vs. non-US
+#                               grouping; finer-grained selection is
+#                               counsel's responsibility).
+#   investor_requirement        one of ``accredited_verified``,
+#                               ``self_certified``, ``none``. Linked
+#                               to prompt 26's
+#                               ``VerificationRecord.status``.
+#   advertising                 ``permitted`` | ``prohibited``.
+#                               ``permitted`` allows general
+#                               solicitation (e.g. 506(c), Reg CF,
+#                               Reg S); ``prohibited`` is 506(b).
+#   max_investors               null = unlimited; integer otherwise
+#                               (e.g. 506(b) caps unaccredited
+#                               investors at 35).
+#   integration_window_days     SEC integration safe-harbor window.
+#                               Currently 30 under Rule 152;
+#                               counsel may shorten / extend per
+#                               their analysis.
+#   counsel_signoff_required    when ``true`` the runtime gate
+#                               requires
+#                               ``counsel_signoff_at`` < signoff
+#                               TTL (90 days) AND non-empty
+#                               ``counsel_signoff_by`` to clear.
+#   counsel_signoff_at          ISO-8601 timestamp; operator-set;
+#                               null = no signoff yet.
+#   counsel_signoff_by          identifier of the attorney /
+#                               firm that signed off; free text.
+schema_version: regulatory-pathways-v1
+counsel_signoff_ttl_days: 90
+pathways:
+  - id: reg_d_506b
+    jurisdiction: US
+    investor_requirement: self_certified
+    advertising: prohibited
+    max_investors: 35
+    integration_window_days: 30
+    counsel_signoff_required: true
+    counsel_signoff_at: null
+    counsel_signoff_by: ""
+  - id: reg_d_506c
+    jurisdiction: US
+    investor_requirement: accredited_verified
+    advertising: permitted
+    max_investors: null
+    integration_window_days: 30
+    counsel_signoff_required: true
+    counsel_signoff_at: null
+    counsel_signoff_by: ""
+  - id: reg_cf
+    jurisdiction: US
+    investor_requirement: none
+    advertising: permitted
+    max_investors: null
+    integration_window_days: 30
+    counsel_signoff_required: true
+    counsel_signoff_at: null
+    counsel_signoff_by: ""
+  - id: reg_s
+    jurisdiction: non_US
+    investor_requirement: none
+    advertising: permitted
+    max_investors: null
+    integration_window_days: 30
+    counsel_signoff_required: true
+    counsel_signoff_at: null
+    counsel_signoff_by: ""

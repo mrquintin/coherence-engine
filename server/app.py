@@ -13,7 +13,7 @@ def create_app():
     if not FASTAPI_AVAILABLE:
         raise ImportError("FastAPI is required: pip install fastapi uvicorn")
 
-    from coherence_engine import CoherenceScorer, EngineConfig, __version__
+    from coherence_engine import CoherenceScorer, __version__
 
     app = FastAPI(
         title="Coherence Engine API",

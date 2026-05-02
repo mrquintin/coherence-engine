@@ -1,0 +1,51 @@
+{
+  "schema_version": "training-artifacts-index-v1",
+  "description": "Hashes of the training-pitch sets used to fit each non-corpus artifact consumed by the validation study. The leakage audit (server/fund/services/leakage_audit.py) verifies that no holdout pitch_id appears in the recorded training_pitch_ids of any artifact listed here. This file is updated manually by the operator whenever an artifact is recomputed; CI verifies on-disk artifact hashes match the registered values.",
+  "training_artifacts": [
+    {
+      "artifact_id": "contradiction_direction_c_hat",
+      "kind": "embedding_direction_vector",
+      "path": "server/fund/services/contradiction_direction.json",
+      "training_set_hash": "PENDING_FIRST_FIT",
+      "training_pitch_ids": [],
+      "training_window": {
+        "train_end_year": 2019,
+        "buffer_year": 2020,
+        "holdout_start_year": 2021
+      },
+      "fit_at": null,
+      "fit_by": null,
+      "notes": "Contradiction-direction unit vector ĉ used by the embedding layer. Recomputed only on the training partition (pre-2020). Hash covers a sorted, newline-joined list of training pitch_ids."
+    },
+    {
+      "artifact_id": "anti_gaming_template_set",
+      "kind": "anti_gaming_templates",
+      "path": "data/anti_gaming/templates.jsonl",
+      "training_set_hash": "PENDING_FIRST_FIT",
+      "training_pitch_ids": [],
+      "training_window": {
+        "train_end_year": 2019,
+        "buffer_year": 2020,
+        "holdout_start_year": 2021
+      },
+      "fit_at": null,
+      "fit_by": null,
+      "notes": "Anti-gaming template phrases mined from the training partition. Holdout pitches MUST NOT appear in training_pitch_ids."
+    },
+    {
+      "artifact_id": "calibration_curve_v1",
+      "kind": "calibration_curve",
+      "path": "data/governed/uncertainty_governance_policy.json",
+      "training_set_hash": "PENDING_FIRST_FIT",
+      "training_pitch_ids": [],
+      "training_window": {
+        "train_end_year": 2019,
+        "buffer_year": 2020,
+        "holdout_start_year": 2021
+      },
+      "fit_at": null,
+      "fit_by": null,
+      "notes": "Per-bin reliability calibration learned on the training partition; consumed by uncertainty_calibration.py."
+    }
+  ]
+}

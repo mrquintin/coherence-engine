@@ -1,0 +1,74 @@
+# Coherence Engine — feature flag registry.
+#
+# This file is the single declarative source for every feature flag the
+# runtime knows about. The FeatureFlags service (server/fund/services/
+# feature_flags.py) reads this file at boot and uses it to validate keys,
+# coerce types, and supply default values when no configured backend
+# (LaunchDarkly / PostHog) returns a value.
+#
+# Type vocabulary:
+#   boolean       — true/false toggle.
+#   string-enum   — one of `enum` (list of strings).
+#   int-percent   — integer in [0, 100], used for staged rollouts.
+#
+# Flag attributes:
+#   key             dotted lower-snake identifier; unique.
+#   type            one of {boolean, string-enum, int-percent}.
+#   default         value used when no backend resolves the flag.
+#   restricted      true iff flipping the flag affects decision policy
+#                   semantics. Restricted flips MUST go through
+#                   FeatureFlags.set_restricted(...) which writes an
+#                   audit row and emits decision_policy_flag_changed.v1.
+#   client_visible  true iff the flag may be exposed via the
+#                   /api/v1/flags/public endpoint to the Next.js front
+#                   end. Restricted flags are never client-visible.
+#   owner           team/individual responsible for the flag's lifecycle.
+#   description     one-line human-readable rationale.
+#   enum            (string-enum only) allowed string values.
+schema_version: feature-flags-v1
+flags:
+  - key: anti_gaming.enabled
+    type: boolean
+    default: true
+    restricted: true
+    client_visible: false
+    owner: platform
+    description: "Master switch for the anti-gaming detector composite-stage adjustment."
+  - key: decision_policy.shadow_mode
+    type: boolean
+    default: false
+    restricted: true
+    client_visible: false
+    owner: platform
+    description: "When true, decisions are computed but founder/partner side effects suppressed (mode=shadow)."
+  - key: scoring.uncertainty_floor
+    type: int-percent
+    default: 0
+    restricted: true
+    client_visible: false
+    owner: platform
+    description: "Lower bound (percent) on uncertainty_width applied during composite scoring."
+  - key: backtest.replay_engine
+    type: string-enum
+    default: deterministic
+    enum:
+      - deterministic
+      - probabilistic
+    restricted: false
+    client_visible: false
+    owner: platform
+    description: "Selects the backtest replay engine implementation."
+  - key: ui.show_decision_artifact_link
+    type: boolean
+    default: true
+    restricted: false
+    client_visible: true
+    owner: frontend
+    description: "Controls whether the founder UI exposes the decision-artifact deep link."
+  - key: ui.investor_portal_beta
+    type: boolean
+    default: false
+    restricted: false
+    client_visible: true
+    owner: frontend
+    description: "Gates the investor-portal beta surface behind an opt-in toggle."

@@ -38,7 +38,7 @@ def cosine_similarity(a, b):
     b = _to_list(b)
 
     # Compute dot product
-    dot_product = sum(x * y for x, y in zip(a, b))
+    dot_product = sum(x * y for x, y in zip(a, b, strict=False))
 
     # Compute norms
     norm_a = l2_norm(a)
@@ -123,4 +123,4 @@ def difference_vector(a, b):
     if len(a) != len(b):
         raise ValueError(f"Vector dimensions must match: {len(a)} vs {len(b)}")
 
-    return [y - x for x, y in zip(a, b)]
+    return [y - x for x, y in zip(a, b, strict=True)]

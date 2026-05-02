@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coherence-engine/datasets/outcome_label/v1",
+  "title": "OutcomeLabelV1",
+  "description": "One realized-outcome row attached to a historical pitch (prompt 43). Joins to historical_pitch.v1 on pitch_id. Provenance is REQUIRED — no unsourced labels are accepted. Each row records: 5-year survival, exit event, last-known ARR / headcount, the as-of date, and a strict provenance object naming the source, URL, retrieval timestamp, and retriever identity. Multiple rows per pitch_id are allowed; the export keeps the row with the latest outcome_as_of.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "pitch_id",
+    "survival_5yr",
+    "exit_event",
+    "last_known_arr_usd",
+    "last_known_headcount",
+    "outcome_as_of",
+    "outcome_provenance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "string", "const": "1"},
+    "pitch_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "description": "UUIDv7 join key against historical_pitch.v1.pitch_id."
+    },
+    "survival_5yr": {
+      "type": ["boolean", "string"],
+      "enum": [true, false, "unknown"],
+      "description": "Was the company still operating five years after pitch_year? Use boolean true/false for sourced labels and string 'unknown' when the data is genuinely missing — never default to true/false on missing data."
+    },
+    "exit_event": {
+      "type": "string",
+      "enum": ["acquired", "ipo", "shutdown", "active", "unknown"],
+      "description": "Realized exit event as of outcome_as_of. acquired|ipo|shutdown require minimum two-source corroboration (see docs/specs/outcome_labeling.md). 'active' = still operating with no exit event. 'unknown' = genuinely missing data; rows with 'unknown' are excluded from the default study export."
+    },
+    "last_known_arr_usd": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "description": "Last-known annualized recurring revenue in USD; null when not disclosed."
+    },
+    "last_known_headcount": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Last-known full-time-equivalent headcount; null when not disclosed."
+    },
+    "outcome_as_of": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "description": "ISO-8601 calendar date (YYYY-MM-DD) on which this label is asserted to be true."
+    },
+    "outcome_provenance": {
+      "type": "object",
+      "required": ["source", "url", "retrieved_at", "retrieved_by"],
+      "additionalProperties": false,
+      "description": "Strict provenance — every field is required. Unsourced labels are rejected.",
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": [
+            "crunchbase",
+            "pitchbook",
+            "sec_edgar",
+            "company_blog",
+            "news_archive",
+            "operator_query"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Canonical URL of the source document; must parse with urllib.parse.urlparse and have a scheme + netloc."
+        },
+        "retrieved_at": {
+          "type": "string",
+          "minLength": 1,
+          "description": "ISO-8601 timestamp when the source was retrieved."
+        },
+        "retrieved_by": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identity (operator handle or service account) responsible for the retrieval."
+        }
+      }
+    }
+  }
+}

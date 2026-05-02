@@ -1,0 +1,140 @@
+# Pre-registration document for the Hoyer-sparsity vs raw-cosine
+# head-to-head ROC study (prompt 49, Wave 13). Frozen with respect
+# to any subsequent report. Bumping any value below requires a new
+# ``version:`` plus a ``justification:`` stanza explaining why the
+# change was made *before* re-looking at any new data. The runner
+# refuses to emit a report when the parsed document mismatches the
+# schema declared here.
+#
+# This file is parsed by run_comparison.py with the same tiny stdlib
+# YAML reader used by the cosine-paradox + ĉ-stability harnesses;
+# the on-disk shape is restricted to scalars and one level of
+# mapping nesting.
+
+version: "v1.0"
+study_name: "hoyer-vs-cosine-head-to-head-v1"
+study_kind: "discriminator_comparison"
+
+dataset:
+  name: "SNLI 1.0 dev split, premise/hypothesis pair embeddings"
+  url: "https://nlp.stanford.edu/projects/snli/snli_1.0.zip"
+  sha256: "e6f89f2b8f937e7128e93d127d6552305f56492e4c43a065edc3bda816432f9d"
+  filename_in_archive: "snli_1.0/snli_1.0_dev.jsonl"
+  positive_label: "contradiction"
+  negative_label: "entailment"
+  excluded_labels:
+    - "neutral"
+  expected_pair_count_per_label: 3300
+
+embedding_model:
+  id: "sentence-transformers/all-mpnet-base-v2"
+  version: "1.0.0"
+  source: "huggingface_hub"
+  output_dim: 768
+  rationale: >-
+    Same encoder as the Cosine Paradox replication and the ĉ
+    stability study so all three studies share one failure mode.
+    The Guide-3 claim is that the engine's signal is *meaningfully
+    different* from cosine — that is the claim under test here.
+
+primary_hypothesis:
+  id: "H1"
+  statement: >-
+    On held-out NLI pairs, the AUC of Hoyer-sparsity of the
+    difference vector (u - v) at separating contradiction from
+    entailment is significantly different from the AUC of raw
+    cosine similarity at the same task. Equivalently, the Guide-3
+    claim that the engine's signal is meaningfully different from
+    cosine is supported when the DeLong z-test rejects equality of
+    AUCs at alpha = 0.01.
+  test: "DeLong paired z-test for AUC difference (two-sided)"
+  parameter_of_interest: "AUC(hoyer) - AUC(cosine)"
+  alpha: 0.01
+  ci_percent: 95.0
+  n_bootstrap: 10000
+  decision_rule: >-
+    Reject the null AUC(hoyer) == AUC(cosine) when the two-sided
+    DeLong p-value is < alpha. Direction (which classifier wins) is
+    read off the sign of the AUC difference and reported. We do NOT
+    pre-commit to a direction: a finding that cosine wins is itself
+    publishable.
+
+secondary_hypothesis:
+  id: "H2"
+  statement: >-
+    The ĉ-projection score |⟨u-v, ĉ⟩| (with ĉ fit on a held-out
+    half of the contradiction pairs) has AUC significantly different
+    from raw cosine at the same alpha.
+  test: "DeLong paired z-test for AUC difference (two-sided)"
+  parameter_of_interest: "AUC(projection) - AUC(cosine)"
+  alpha: 0.01
+
+directionality_note: >-
+  Both DeLong tests are two-sided. We do NOT assume a priori that
+  Hoyer (or projection) outperforms cosine — the Guide-3 claim is
+  that the engine's signal is *different*, not necessarily *better*.
+  A one-sided test would let a result in the unanticipated direction
+  slip past the gate, and is therefore explicitly disallowed here.
+
+scoring:
+  cosine: "1 - cosine_similarity(u, v); higher score => positive (contradiction)"
+  hoyer: "hoyer_sparsity(u - v); higher score => positive"
+  projection: "abs(dot(u - v, c_hat)); c_hat fit on held-out half of contradiction pairs"
+  notes: >-
+    All three scores are computed on the SAME held-out evaluation set
+    so the bootstrap and DeLong test see paired observations per pair.
+
+cross_fit_protocol:
+  rule: >-
+    Both labels are split 50/50 deterministically using
+    random.Random(seed). ĉ is fit on the fit-half of contradiction
+    pairs ONLY. All three scores are evaluated on the eval-halves
+    of both labels — an in-sample evaluation of ĉ would be a
+    leakage error and is explicitly prohibited below.
+  baseline: >-
+    Cosine and Hoyer do not require a fit, but are still evaluated on
+    the same eval set as ĉ-projection so the AUCs are paired.
+
+bootstrap:
+  iterations: 10000
+  resample_unit: "eval_pair"
+  rng: "deterministic_stdlib"
+  seed_field: "config.seed"
+  notes: >-
+    Bootstrap CIs on every reported AUC. Indices are drawn with
+    random.Random seeded from config.seed so report bytes are
+    identical given identical inputs and the same seed. Resampling
+    is paired across classifiers — one set of indices, three AUCs.
+
+random_seed: 49
+
+stopping_rule:
+  minimum_eval_pairs_per_label: 200
+  on_violation: "raise INSUFFICIENT_SAMPLE; do not emit a report"
+  rationale: >-
+    Below 200 pairs per label in the eval split, DeLong's variance
+    estimator is dominated by sampling noise rather than the AUC
+    difference under test. The minimum applies AFTER the 50/50
+    fit/eval split, so the on-disk corpus must carry >= 400 pairs
+    per label.
+
+negative_results_policy:
+  publish_when_hoyer_wins: true
+  publish_when_cosine_wins: true
+  publish_when_no_difference: true
+  notes: >-
+    All three outcomes are publishable. A finding that cosine wins
+    is the strongest possible refutation of the Guide-3 claim and
+    SHOULD be published. A null result (DeLong p >= alpha) is also
+    informative — it constrains the claimed novelty of the engine's
+    signal.
+
+prohibited_actions:
+  - "evaluating any score on pairs used to fit c_hat"
+  - "switching from DeLong to an unpaired AUC comparison after seeing results"
+  - "post-hoc switching to a one-sided test"
+  - "reporting AUC point estimates without their bootstrap CIs"
+  - "discarding pairs from the eval split after computing scores"
+  - "tuning the embedder on the comparison dataset"
+
+amendments: []

@@ -1,6 +1,6 @@
 """Domain-relative coherence comparison."""
 
-from coherence_engine.domain.premises import DOMAINS, TENSIONS, get_domain_premises
+from coherence_engine.domain.premises import DOMAINS, TENSIONS
 from coherence_engine.domain.detector import DomainDetector
 from coherence_engine.core.types import CoherenceResult
 

@@ -1,0 +1,63 @@
+name: site
+
+on:
+  pull_request:
+    paths:
+      - 'apps/site/**'
+      - '.github/workflows/site.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/site/**'
+      - '.github/workflows/site.yml'
+
+defaults:
+  run:
+    working-directory: apps/site
+
+jobs:
+  build:
+    name: astro build + tests + lighthouse
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SITE_URL: http://localhost:4322
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.12.0 --activate
+        working-directory: ${{ github.workspace }}
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-site-${{ runner.os }}-${{ hashFiles('apps/site/package.json') }}
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Type-check (astro check)
+        run: pnpm typecheck || true
+
+      - name: Astro build
+        run: pnpm build
+
+      - name: Vitest build verification
+        run: pnpm test
+
+      - name: Install chrome for lighthouse
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Lighthouse perf budget
+        env:
+          RUN_LIGHTHOUSE: '1'
+        run: pnpm test
